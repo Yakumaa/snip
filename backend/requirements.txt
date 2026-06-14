@@ -1,0 +1,14 @@
+# Web framework 
+Flask==3.1.1
+gunicorn==23.0.0         # production WSGI server
+
+# Database 
+Flask-SQLAlchemy==3.1.1  # ORM integration
+Flask-Migrate==4.1.0     # Alembic-based schema migrations
+psycopg2-binary==2.9.10  # PostgreSQL driver (binary = no native build deps)
+
+# CORS 
+Flask-Cors==5.0.1        # Cross-Origin Resource Sharing headers
+
+# Utilities 
+python-dotenv==1.1.0     # Load .env files in development

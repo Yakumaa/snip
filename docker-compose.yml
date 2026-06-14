@@ -1,0 +1,65 @@
+services:
+  # PostgreSQL database
+  db:
+    image: postgres:16-alpine
+    container_name: shortener_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-shortener}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-shortener}
+      POSTGRES_DB: ${POSTGRES_DB:-shortener_db}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5433:5432"          # expose for local psql / DBeaver access
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-shortener} -d ${POSTGRES_DB:-shortener_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Flask backend 
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: shortener_backend
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy   # wait for Postgres to be ready
+    environment:
+      FLASK_DEBUG: ${FLASK_DEBUG:-0}
+      SECRET_KEY: ${SECRET_KEY:-change-me-in-production}
+      POSTGRES_USER: ${POSTGRES_USER:-shortener}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-shortener}
+      POSTGRES_HOST: db                 # service name resolves inside Docker network
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: ${POSTGRES_DB:-shortener_db}
+      RATE_LIMIT_MAX_REQUESTS: ${RATE_LIMIT_MAX_REQUESTS:-5}
+      RATE_LIMIT_WINDOW_SECONDS: ${RATE_LIMIT_WINDOW_SECONDS:-60}
+      FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-http://localhost:5173}
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./backend:/app     # hot-reload in dev — remove in production
+
+  # React / Vite frontend
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: shortener_frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    environment:
+      VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:5000}
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/app       # hot-reload for Vite HMR
+      - /app/node_modules     # keep container node_modules isolated
+
+volumes:
+  postgres_data:
