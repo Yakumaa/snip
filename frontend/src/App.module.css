@@ -1,21 +1,197 @@
-.layout {
+/* root */
+.root {
+  min-height: 100vh;
   display: flex;
   flex-direction: column;
-  min-height: 100dvh;
+  background: #020917;        
 }
 
+/* Navbar */
+.navbar {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  background: rgba(2, 9, 23, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-bottom: 1px solid #1e293b;
+}
+
+.navInner {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 0 1.5rem;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+/* Logo */
+.navLogo {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: #f1f5f9;
+  letter-spacing: -0.03em;
+  margin-right: auto;           /* push tabs + badge to the right */
+  user-select: none;
+}
+
+.navDot {
+  color: #6366f1;
+}
+
+/* Tab buttons */
+.navTabs {
+  display: flex;
+  gap: 2px;
+  background: #0f172a;
+  border: 1px solid #1e293b;
+  border-radius: 10px;
+  padding: 3px;
+}
+
+.navTab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0.35rem 0.85rem;
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: #64748b;
+  background: transparent;
+  border: none;
+  border-radius: 7px;
+  cursor: pointer;
+  transition: color 0.15s, background 0.15s;
+  white-space: nowrap;
+}
+
+.navTab:hover {
+  color: #94a3b8;
+  background: #1e293b;
+}
+
+.navTabActive {
+  color: #f1f5f9;
+  background: #1e293b;
+}
+
+.navTabActive svg {
+  stroke: #6366f1;
+}
+
+/* Rate limit badge */
+.navBadge {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: #475569;
+  background: #0f172a;
+  border: 1px solid #1e293b;
+  border-radius: 999px;
+  padding: 3px 10px;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+/* Main */
 .main {
   flex: 1;
+  position: relative;
+}
+
+/* Panel switching — CSS-driven, no JS remount */
+.panel {
+  width: 100%;
+}
+
+.panelHidden {
+  display: none;
+}
+
+.panelVisible {
+  display: block;
+  animation: fadeIn 0.18s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Hero */
+.heroWrap {
+  min-height: calc(100vh - 56px - 48px); /* full viewport minus nav + footer */
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: var(--space-8) var(--space-4);
+  padding: 3rem 1.5rem;
 }
 
+/* Analytics */
+.analyticsWrap {
+  padding: 2rem 1.5rem;
+  max-width: 1100px;
+  margin: 0 auto;
+}
+
+/* Footer */
 .footer {
-  padding: var(--space-6) var(--space-4);
-  text-align: center;
-  font-size: var(--text-xs);
-  color: var(--color-text-faint);
-  border-top: 1px solid var(--color-border);
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-top: 1px solid #0f172a;
+}
+
+.footer p {
+  margin: 0;
+  font-size: 0.72rem;
+  color: #334155;
+  letter-spacing: 0.01em;
+}
+
+/* Responsive */
+
+/* Tablet — tighten padding */
+@media (max-width: 768px) {
+  .heroWrap {
+    padding: 2rem 1rem;
+    align-items: flex-start;
+    padding-top: 2.5rem;
+  }
+
+  .analyticsWrap {
+    padding: 1.25rem 1rem;
+  }
+
+  .navBadge {
+    display: none;             /* hide on small screens — saves space */
+  }
+}
+
+/* Mobile — shrink nav further */
+@media (max-width: 480px) {
+  .navInner {
+    padding: 0 1rem;
+  }
+
+  .navLogo {
+    font-size: 1.1rem;
+  }
+
+  .navTab {
+    padding: 0.35rem 0.65rem;
+    font-size: 0.78rem;
+    gap: 4px;
+  }
+
+  .heroWrap {
+    padding: 1.5rem 0.75rem;
+    min-height: auto;
+  }
+
+  .analyticsWrap {
+    padding: 1rem 0.75rem;
+  }
 }
