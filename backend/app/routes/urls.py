@@ -224,12 +224,17 @@ def get_analytics(alias: str):
 
     try:
         rows = db.session.execute(
-            db.text(
-                "SELECT click_date, click_count "
-                "FROM v_clicks_last_7_days "
-                "WHERE alias = :alias "
-                "ORDER BY click_date ASC"
-            ),
+            db.text("""
+                SELECT
+                    DATE(c.clicked_at AT TIME ZONE 'UTC') AS click_date,
+                    COUNT(*)                               AS click_count
+                FROM clicks c
+                JOIN shortened_urls su ON su.id = c.shortened_url_id
+                WHERE su.alias = :alias
+                  AND c.clicked_at >= NOW() - INTERVAL '7 days'
+                GROUP BY click_date
+                ORDER BY click_date ASC
+            """),
             {"alias": alias},
         ).fetchall()
     except SQLAlchemyError as exc:

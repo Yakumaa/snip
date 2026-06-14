@@ -2,13 +2,14 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
-# Install deps first (layer-cached unless requirements change)
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
+# Strip Windows CR characters and set executable — defensive against CRLF on Windows hosts
+RUN sed -i 's/\r$//' /app/entrypoint.sh && chmod +x /app/entrypoint.sh
+
 EXPOSE 5000
 
-# Use gunicorn in production; override CMD for dev hot-reload if needed
-CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "2", "wsgi:app"]
+CMD ["/app/entrypoint.sh"]
