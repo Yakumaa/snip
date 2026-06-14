@@ -129,13 +129,13 @@ On every incoming request from IP address X:
         → Allow the request.
 ```
  
-**Data structure:** Each IP maps to a `collections.deque` of UTC timestamps (floats). `deque` gives O(1) `append` and O(1) `popleft` — eviction of expired entries is as cheap as possible.
+<!-- **Data structure:** Each IP maps to a `collections.deque` of UTC timestamps (floats). `deque` gives O(1) `append` and O(1) `popleft` — eviction of expired entries is as cheap as possible.
  
 **Thread safety:** A single `threading.Lock` guards the shared in-memory dict, making it safe under gunicorn's threaded workers.
  
 **Trade-offs acknowledged:**
 - State is in-process memory — a restart clears all counters. Production would use Redis sorted sets for persistence and cross-worker sharing.
-- With multiple gunicorn *workers* (processes), each worker maintains its own dict. The compose config uses `--workers 2`; for true multi-worker rate limiting, replace the dict with a Redis backend.
+- With multiple gunicorn *workers* (processes), each worker maintains its own dict. The compose config uses `--workers 2`; for true multi-worker rate limiting, replace the dict with a Redis backend. -->
 
 ## API Endpoints
 

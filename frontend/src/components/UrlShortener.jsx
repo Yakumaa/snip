@@ -45,7 +45,7 @@ function ResultCard({ result }) {
 
       {/* Signature element: the glowing alias pill */}
       <div className={styles.aliasPill}>
-        <span className={styles.aliasBase}>{window.location.origin}/</span>
+        <span className={styles.aliasBase}>Alias: /</span>
         <span className={styles.aliasCode}>{result.alias}</span>
       </div>
 
