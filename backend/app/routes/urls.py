@@ -268,3 +268,20 @@ def get_analytics(alias: str):
         "analytics": analytics,
     }), 200
  
+@urls_bp.route("/api/debug/rate-limit", methods=["GET"])
+def debug_rate_limit():
+    """
+    DEV ONLY — shows the current in-memory rate-limit store and the IP
+    Flask sees for this request.  Remove before deploying to production.
+    """
+    from app.middleware.rate_limiter import get_store_snapshot
+    forwarded_for = request.headers.get("X-Forwarded-For", "").strip()
+    resolved_ip = forwarded_for.split(",")[0].strip() if forwarded_for else (request.remote_addr or "unknown")
+    snapshot = get_store_snapshot()
+    return jsonify({
+        "resolved_ip": resolved_ip,
+        "remote_addr": request.remote_addr,
+        "x_forwarded_for": forwarded_for or None,
+        "store": {ip: len(ts) for ip, ts in snapshot.items()},
+        "store_detail": snapshot,
+    }), 200
