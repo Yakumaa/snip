@@ -36,10 +36,10 @@ function UrlListItem({ entry, isSelected, onClick }) {
     >
       <span className={styles.urlAlias}>/{entry.alias}</span>
       <span className={styles.urlMeta}>
-        <span className={styles.urlClicks}>
+        {/* <span className={styles.urlClicks}>
           <ClickIcon />
           {entry.total_clicks.toLocaleString()}
-        </span>
+        </span> */}
         <span className={styles.urlOrigin} title={entry.original_url}>
           {truncateUrl(entry.original_url, 32)}
         </span>
@@ -109,6 +109,12 @@ export default function AnalyticsDashboard({ refreshTrigger }) {
       const data = await fetchAnalytics(alias);
       setAnalytics(data);
       setLastRefreshed(new Date());
+
+      setUrls((prev) =>
+        prev.map((u) =>
+          u.alias === alias ? { ...u, total_clicks: data.total_clicks } : u
+        )
+      );
 
       if (chartRef.current) {
         const chart = chartRef.current;
@@ -250,7 +256,7 @@ export default function AnalyticsDashboard({ refreshTrigger }) {
                     className={styles.chartOriginalUrl}
                     title={selected.original_url}
                   >
-                    {truncateUrl(selected.original_url, 48)}
+                    {truncateUrl(selected.original_url, 50)}
                   </a>
                 </div>
 
@@ -351,13 +357,13 @@ function formatTime(date) {
 }
 
 // Inline SVG icons
-function ClickIcon() {
-  return (
-    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M3 3l7.07 16.97 2.51-7.39 7.39-2.51L3 3z" />
-    </svg>
-  );
-}
+// function ClickIcon() {
+//   return (
+//     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+//       <path d="M3 3l7.07 16.97 2.51-7.39 7.39-2.51L3 3z" />
+//     </svg>
+//   );
+// }
 
 function ChartBarIcon() {
   return (
