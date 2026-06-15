@@ -11,4 +11,4 @@ RUN sed -i 's/\r$//' /app/entrypoint.sh
 
 EXPOSE 5000
 
-CMD ["sh", "/app/entrypoint.sh"]
+ENTRYPOINT ["sh", "entrypoint.sh"]
