@@ -16,8 +16,7 @@ def generate_alias() -> str:
 
 def generate_alias_from_url(url: str) -> str:
     """
-    Deterministic fallback: derive a 6-char alias from the URL's SHA-256
-    hash.  Used only when random generation keeps colliding (very rare).
+    Deterministic fallback: derive a 6-char alias from the URL's SHA-256 hash.  Used only when random generation keeps colliding (very rare).
     """
     digest = hashlib.sha256(url.encode()).hexdigest()
     return digest[:ALIAS_LENGTH]

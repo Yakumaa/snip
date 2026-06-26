@@ -1,4 +1,3 @@
-// frontend/src/App.jsx
 import { useState } from "react";
 import UrlShortener from "./components/UrlShortener";
 import AnalyticsDashboard from "./components/AnalyticsDashboard";

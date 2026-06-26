@@ -18,15 +18,8 @@ Algorithm:
 Why Sliding Window Log over Fixed Window?
   Fixed Window resets the counter at a hard boundary (e.g. every :00 second).
   A client can fire 5 requests at :59 and 5 more at :01 — 10 in 2 seconds.
-  Sliding Window Log measures a true rolling 60-second period, so the burst
-  gap exploit is impossible.
+  Sliding Window Log measures a true rolling 60-second period, so the burst gap exploit is impossible.
 
-Trade-offs:
-  - Memory: O(LIMIT) timestamps per IP (log is capped to LIMIT entries).
-  - Not persistent: restarts clear all state (acceptable for this assessment;
-    production would use Redis with sorted sets).
-  - Not safe across multiple gunicorn workers: each worker has its own dict.
-    In production use Redis or a shared cache.
 """
 
 import logging
@@ -83,9 +76,7 @@ def rate_limit(f):
     """
     Decorator that applies the sliding window rate limit to a route.
 
-    Reads RATE_LIMIT_MAX_REQUESTS and RATE_LIMIT_WINDOW_SECONDS from the
-    Flask app config so limits can be changed via environment variables
-    without touching code.
+    Reads RATE_LIMIT_MAX_REQUESTS and RATE_LIMIT_WINDOW_SECONDS from the Flask app config so limits can be changed via environment variables without touching code.
 
     Usage:
         @urls_bp.route("/api/shorten", methods=["POST"])

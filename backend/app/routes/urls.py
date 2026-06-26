@@ -194,11 +194,9 @@ def get_analytics(alias: str):
     """
     Return daily click counts for *alias* over the last 7 days.
  
-    Uses the v_clicks_last_7_days VIEW defined in schema.sql so the heavy
-    aggregation stays in Postgres and the Python layer only serialises rows.
+    Uses the v_clicks_last_7_days VIEW defined in schema.sql so the heavy aggregation stays in Postgres and the Python layer only serialises rows. (Used Raw SQL for now because of migration issues with SQLAlchemy ORM and the view.)
  
-    Dates with zero clicks are filled in by Python so Chart.js always receives
-    exactly 7 data points — a continuous x-axis regardless of activity gaps.
+    Dates with zero clicks are filled in by Python so Chart.js always receives exactly 7 data points — a continuous x-axis regardless of activity gaps.
  
     Response 200:
         {

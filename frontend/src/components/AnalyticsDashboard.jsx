@@ -118,7 +118,7 @@ export default function AnalyticsDashboard({ refreshTrigger }) {
 
       if (chartRef.current) {
         const chart = chartRef.current;
-        chart.data.labels        = data.analytics.map((d) => formatDate(d.date));
+        chart.data.labels = data.analytics.map((d) => formatDate(d.date));
         chart.data.datasets[0].data = data.analytics.map((d) => d.clicks);
         chart.update("active"); 
       }
