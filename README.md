@@ -1,13 +1,13 @@
 # Rate-Limited URL Shortener with Analytics
 
-A full-stack web application built as a technical assessment for Grepsr. Users can shorten long URLs, track click activity, and visualise 7-day analytics through a live Chart.js dashboard.
+A full-stack web application to shorten URLs. Users can shorten long URLs, track click activity, and visualise 7-day analytics through a live Chart.js dashboard.
 
 **Stack:** Python 3.12 / Flask · React 18 / Vite · PostgreSQL 16 · Docker
 
 ## Project Structure
 
 ```
-fullstack-assessment/
+snip/
 ├── backend/                  # Flask API
 │   ├── app/
 │   │   ├── middleware/
@@ -46,8 +46,8 @@ fullstack-assessment/
 ### 1. Clone & configure
 
 ```bash
-git clone https://github.com/Yakumaa/fullstack-assessment.git
-cd fullstack-assessment
+git clone https://github.com/Yakumaa/snip.git
+cd snip
 cp .env.example .env
 ```
 Edit `.env` if you want to change any defaults (the defaults work out of the box):
