@@ -8,6 +8,7 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from app.extensions import db
 from app.middleware.rate_limiter import rate_limit
 from app.models.url import Click, ShortenedUrl
+from app.services.safe_browsing import check_url_safety
 from app.utils.helpers import generate_alias, generate_alias_from_url, is_valid_url, normalise_url
 
 logger = logging.getLogger(__name__)
@@ -73,6 +74,16 @@ def shorten_url():
         }), 400
 
     original_url = normalise_url(raw_url)
+
+    # Safe Browsing check — reject known malware/phishing/etc URLs.
+    is_safe, threat_type = check_url_safety(original_url)
+    if not is_safe:
+        return jsonify({
+            "error": (
+                "This URL was flagged as unsafe by Google Safe Browsing "
+                f"(category: {threat_type}) and cannot be shortened."
+            )
+        }), 400
 
     # Alias generation + DB write 
     try:

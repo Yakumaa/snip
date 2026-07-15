@@ -54,6 +54,7 @@ services:
       RATE_LIMIT_MAX_REQUESTS:  ${RATE_LIMIT_MAX_REQUESTS:-5}
       RATE_LIMIT_WINDOW_SECONDS: ${RATE_LIMIT_WINDOW_SECONDS:-60}
       FRONTEND_ORIGIN:          ${FRONTEND_ORIGIN:-http://localhost:5173}
+      SAFE_BROWSING_API_KEY:    ${SAFE_BROWSING_API_KEY:-}
     command: sh -c "flask db upgrade && gunicorn --bind 0.0.0.0:5000 --workers 2 --worker-class gthread --threads 4 --timeout 60 --access-logfile - --error-logfile - wsgi:app"
     ports:
       - "5000:5000"
