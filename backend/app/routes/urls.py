@@ -9,7 +9,13 @@ from app.extensions import db
 from app.middleware.rate_limiter import rate_limit
 from app.models.url import Click, ShortenedUrl
 from app.services.safe_browsing import check_url_safety
-from app.utils.helpers import generate_alias, generate_alias_from_url, is_valid_url, normalise_url
+from app.utils.helpers import (
+    check_ssrf_safety,
+    generate_alias,
+    generate_alias_from_url,
+    is_valid_url,
+    normalise_url,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -51,7 +57,7 @@ def shorten_url():
     Responses:
         201  { "alias": "aB3xYz", "short_url": "http://localhost:5000/aB3xYz",
                "original_url": "https://example.com/very/long/path" }
-        400  { "error": "..." }          — missing / invalid input
+        400  { "error": "..." }          — missing / invalid input, URL points to a private/internal address, or flagged as unsafe
         500  { "error": "..." }          — unexpected server error
     """
     data = request.get_json(silent=True)
@@ -65,8 +71,6 @@ def shorten_url():
     if not raw_url:
         return jsonify({"error": "The 'url' field is required and cannot be empty."}), 400
 
-    print("RAW URL:", raw_url)
-
     if not is_valid_url(raw_url):
         return jsonify({
             "error": "Invalid URL. Please provide a valid HTTP or HTTPS URL "
@@ -74,6 +78,14 @@ def shorten_url():
         }), 400
 
     original_url = normalise_url(raw_url)
+
+    # SSRF / private-network check — reject destinations that resolve to localhost, RFC 1918 private ranges, link-local (incl. cloud metadata endpoints), or other internal-only addresses. Runs before the Safe Browsing call so we don't waste a quota'd external API call, and don't send an internal-looking address to a third party, on a URL we're going to reject anyway.
+    is_safe_destination, ssrf_reason = check_ssrf_safety(original_url)
+    if not is_safe_destination:
+        logger.warning("Blocked private/internal URL submission: %s (%s)", original_url, ssrf_reason)
+        return jsonify({
+            "error": f"This URL cannot be shortened: {ssrf_reason}"
+        }), 400
 
     # Safe Browsing check — reject known malware/phishing/etc URLs.
     is_safe, threat_type = check_url_safety(original_url)
