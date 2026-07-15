@@ -10,5 +10,8 @@ psycopg2-binary==2.9.10  # PostgreSQL driver (binary = no native build deps)
 # CORS 
 Flask-Cors==5.0.1        # Cross-Origin Resource Sharing headers
 
+# Rate limiting backend 
+redis==5.2.1             # Redis client — backs the sliding-window rate limiter
+
 # Utilities 
 python-dotenv==1.1.0     # Load .env files in development
