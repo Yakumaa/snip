@@ -18,6 +18,19 @@ services:
       timeout: 5s
       retries: 5
 
+  # Redis
+  redis:
+    image: redis:7-alpine
+    container_name: shortener_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"          # expose for local redis-cli access / debugging
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   # Flask backend 
   backend:
     build:
@@ -37,10 +50,12 @@ services:
       POSTGRES_HOST:            db
       POSTGRES_PORT:            5432
       POSTGRES_DB:              ${POSTGRES_DB:-shortener_db}
+      REDIS_URL:                ${REDIS_URL:-redis://redis:6379/0}
       RATE_LIMIT_MAX_REQUESTS:  ${RATE_LIMIT_MAX_REQUESTS:-5}
       RATE_LIMIT_WINDOW_SECONDS: ${RATE_LIMIT_WINDOW_SECONDS:-60}
       FRONTEND_ORIGIN:          ${FRONTEND_ORIGIN:-http://localhost:5173}
-    command: sh -c "flask db upgrade && gunicorn --bind 0.0.0.0:5000 --workers 1 --timeout 60 --access-logfile - --error-logfile - wsgi:app"
+      SAFE_BROWSING_API_KEY:    ${SAFE_BROWSING_API_KEY:-}
+    command: sh -c "flask db upgrade && gunicorn --bind 0.0.0.0:5000 --workers 2 --worker-class gthread --threads 4 --timeout 60 --access-logfile - --error-logfile - wsgi:app"
     ports:
       - "5000:5000"
     volumes:
