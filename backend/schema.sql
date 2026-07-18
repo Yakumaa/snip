@@ -40,3 +40,5 @@ JOIN shortened_urls su ON su.id = c.shortened_url_id
 WHERE c.clicked_at >= NOW() - INTERVAL '7 days'
 GROUP BY su.alias, click_date
 ORDER BY su.alias, click_date;
+
+ALTER TABLE shortened_urls ADD COLUMN expires_at TIMESTAMPTZ;

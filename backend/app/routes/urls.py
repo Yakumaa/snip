@@ -15,6 +15,7 @@ from app.utils.helpers import (
     generate_alias_from_url,
     is_valid_url,
     is_valid_custom_alias,
+    parse_expiry,
     normalise_url,
 )
 
@@ -119,10 +120,16 @@ def shorten_url():
             logger.error("Alias generation failed: %s", exc)
             return jsonify({"error": str(exc)}), 500
         
+    # Expiry handling
+    raw_expiry = (data.get("expires_at") or "").strip()
+    expires_at, expiry_error = parse_expiry(raw_expiry)
+    if expiry_error:
+        return jsonify({"error": expiry_error}), 400
+    
     # Alias generation + DB write 
     try:
         # alias = _make_unique_alias(original_url)
-        entry = ShortenedUrl(original_url=original_url, alias=alias)
+        entry = ShortenedUrl(original_url=original_url, alias=alias, expires_at=expires_at)
         db.session.add(entry)
         db.session.commit()
     # except RuntimeError as exc:
@@ -142,6 +149,7 @@ def shorten_url():
         "alias": alias,
         "short_url": f"{base_url}/{alias}",
         "original_url": original_url,
+        "expires_at": expires_at.isoformat() if expires_at else None,
     }), 201
 
 # GET /<alias>  — redirect + click tracking
@@ -159,6 +167,9 @@ def redirect_alias(alias: str):
     if entry is None:
         return jsonify({"error": f"Alias '{alias}' not found."}), 404
 
+    if entry.expires_at and entry.expires_at < datetime.now(timezone.utc):
+        return jsonify({"error": "This link has expired."}), 410
+    
     try:
         ip = request.headers.get("X-Forwarded-For", request.remote_addr or "")
         client_ip = ip.split(",")[0].strip()

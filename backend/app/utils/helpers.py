@@ -6,6 +6,7 @@ import socket
 import string
 from urllib.parse import urlparse
 from typing import Tuple, Optional
+from datetime import datetime, timezone
 
 # Alias generation
 ALIAS_CHARS = string.ascii_letters + string.digits  # a-z A-Z 0-9
@@ -202,3 +203,25 @@ def is_valid_custom_alias(alias: str) -> tuple[bool, str]:
     if alias.lower() in RESERVED_ALIASES:
         return False, f"'{alias}' is a reserved word and cannot be used as an alias."
     return True, ""
+
+def parse_expiry(raw_expiry: str) -> tuple[datetime | None, str]:
+    """
+    Parse an ISO 8601 expiry timestamp from the client.
+    Returns (parsed_datetime_or_None, error_message).
+    """
+    if not raw_expiry:
+        return None, ""
+
+    try:
+        # Accept "Z" suffix as well as explicit offsets
+        dt = datetime.fromisoformat(raw_expiry.replace("Z", "+00:00"))
+    except ValueError:
+        return None, "Invalid expiry date format. Use ISO 8601 (e.g. 2026-08-01T00:00:00Z)."
+
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+
+    if dt <= datetime.now(timezone.utc):
+        return None, "Expiry date must be in the future."
+
+    return dt, ""

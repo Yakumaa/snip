@@ -16,6 +16,7 @@ class ShortenedUrl(db.Model):
         nullable=False,
         default=lambda: datetime.now(timezone.utc),
     )
+    expires_at = db.Column(db.DateTime(timezone=True), nullable=True)
 
     clicks = db.relationship(
         "Click", back_populates="shortened_url", cascade="all, delete-orphan"
@@ -30,6 +31,7 @@ class ShortenedUrl(db.Model):
             "original_url": self.original_url,
             "alias": self.alias,
             "created_at": self.created_at.isoformat(),
+            "expires_at": self.expires_at.isoformat() if self.expires_at else None,
             "total_clicks": len(self.clicks),
         }
 
