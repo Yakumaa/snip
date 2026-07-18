@@ -14,6 +14,7 @@ from app.utils.helpers import (
     generate_alias,
     generate_alias_from_url,
     is_valid_url,
+    is_valid_custom_alias,
     normalise_url,
 )
 
@@ -97,15 +98,36 @@ def shorten_url():
             )
         }), 400
 
+    # Custom alias handling
+    custom_alias = (data.get("custom_alias") or "").strip()
+
+    if custom_alias:
+        is_valid, reason = is_valid_custom_alias(custom_alias)
+        if not is_valid:
+            return jsonify({"error": reason}), 400
+
+        if ShortenedUrl.query.filter_by(alias=custom_alias).first():
+            return jsonify({
+                "error": f"Alias '{custom_alias}' is already taken. Please choose another."
+            }), 409
+
+        alias = custom_alias
+    else:
+        try:
+            alias = _make_unique_alias(original_url)
+        except RuntimeError as exc:
+            logger.error("Alias generation failed: %s", exc)
+            return jsonify({"error": str(exc)}), 500
+        
     # Alias generation + DB write 
     try:
-        alias = _make_unique_alias(original_url)
+        # alias = _make_unique_alias(original_url)
         entry = ShortenedUrl(original_url=original_url, alias=alias)
         db.session.add(entry)
         db.session.commit()
-    except RuntimeError as exc:
-        logger.error("Alias generation failed: %s", exc)
-        return jsonify({"error": str(exc)}), 500
+    # except RuntimeError as exc:
+    #     logger.error("Alias generation failed: %s", exc)
+    #     return jsonify({"error": str(exc)}), 500
     except IntegrityError:
         db.session.rollback()
         logger.warning("IntegrityError on alias '%s' — race condition, ask client to retry.", alias)

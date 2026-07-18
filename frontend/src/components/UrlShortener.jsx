@@ -101,6 +101,8 @@ function RateLimitBanner({ secondsLeft }) {
 export default function UrlShortener({ onSuccess }) {
   const [url, setUrl]         = useState('')
   const [result, setResult]   = useState(null)
+  const [customAlias, setCustomAlias] = useState("");
+  const [aliasError, setAliasError] = useState("");
   const [error, setError]     = useState(null)
   const [loading, setLoading] = useState(false)
 
@@ -117,15 +119,18 @@ export default function UrlShortener({ onSuccess }) {
     setResult(null)
 
     try {
-      const data = await shortenUrl(url.trim())
+      const data = await shortenUrl(url.trim(), customAlias.trim())
       setResult(data)
       setUrl('')           
+      setCustomAlias('')     
       onSuccess?.(data)
     } catch (err) {
       if (err instanceof ApiError) {
         if (err.status === 429) {
           const retryAfter = err.data?.retry_after_seconds ?? 60
           startCountdown(retryAfter)
+        } else if (err.status === 409) {
+          setAliasError(err.message)
         } else {
           setError(err.message)
         }
@@ -159,14 +164,30 @@ export default function UrlShortener({ onSuccess }) {
               value={url}
               onChange={(e) => {
                 setUrl(e.target.value)
-                if (error) setError(null)   
-                if (result) setResult(null) 
+                if (error) setError(null)
+                if (result) setResult(null)
               }}
               disabled={isRateLimited || loading}
               aria-label="Long URL to shorten"
               aria-describedby={error ? 'url-error' : undefined}
               autoComplete="url"
               spellCheck="false"
+            />
+          </div>
+          <span className={styles.aliasSeparator} aria-hidden="true">/</span>
+          <div className={styles.aliasWrap}>
+            <input
+              type="text"
+              className={styles.aliasInput}
+              placeholder="alias (optional)"
+              value={customAlias}
+              onChange={(e) => {
+                setCustomAlias(e.target.value)
+                if (aliasError) setAliasError(null)
+              }}
+              disabled={isRateLimited || loading}
+              maxLength={6}
+              aria-label="Custom alias (optional)"
             />
           </div>
 
@@ -185,13 +206,19 @@ export default function UrlShortener({ onSuccess }) {
               'Shorten'
             )}
           </button>
-        </div>
+      </div>
 
-        {error && (
-          <p id="url-error" className={styles.errorMsg} role="alert">
-            <ErrorIcon aria-hidden="true" /> {error}
-          </p>
-        )}
+      {aliasError && (
+        <p className={styles.errorMsg} role="alert">
+          <ErrorIcon aria-hidden="true" /> {aliasError}
+        </p>
+      )}
+
+      {error && (
+        <p id="url-error" className={styles.errorMsg} role="alert">
+          <ErrorIcon aria-hidden="true" /> {error}
+        </p>
+      )}
       </form>
 
       {isRateLimited && <RateLimitBanner secondsLeft={secondsLeft} />}

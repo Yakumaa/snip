@@ -178,3 +178,27 @@ def check_ssrf_safety(url: str) -> Tuple[bool, Optional[str]]:
             return False, f"URL's hostname resolves to a private or internal address ({ip_str})."
 
     return True, None
+
+ALIAS_PATTERN = re.compile(r"^[a-zA-Z0-9_-]{3,32}$")
+
+# Reserved so custom aliases can't collide with real routes
+RESERVED_ALIASES = {
+    "api", "health", "shorten", "urls", "analytics",
+    "static", "favicon.ico", "robots.txt",
+}
+
+def is_valid_custom_alias(alias: str) -> tuple[bool, str]:
+    """
+    Validate a user-supplied custom alias.
+    Returns (is_valid, reason_if_invalid).
+    """
+    if not alias:
+        return False, "Custom alias cannot be empty."
+    if not ALIAS_PATTERN.match(alias):
+        return False, (
+            "Custom alias must be 6 characters and contain only "
+            "letters, numbers, hyphens, and underscores."
+        )
+    if alias.lower() in RESERVED_ALIASES:
+        return False, f"'{alias}' is a reserved word and cannot be used as an alias."
+    return True, ""
