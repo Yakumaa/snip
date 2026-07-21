@@ -36,11 +36,20 @@ function CopyButton({ text }) {
 }
 
 function ResultCard({ result }) {
+  const formattedExpiry = result.expires_at
+    ? new Date(result.expires_at).toLocaleString(undefined, {
+        dateStyle: 'medium',
+        timeStyle: 'short',
+      })
+    : null
+
   return (
     <div className={styles.resultCard} role="status" aria-live="polite">
       <div className={styles.resultHeader}>
-        <span className={styles.successDot} aria-hidden="true" />
-        <span className={styles.resultLabel}>Link ready</span>
+        <div className={styles.resultStatus}>
+          <span className={styles.successDot} aria-hidden="true" />
+          <span className={styles.resultLabel}>Link ready</span>
+        </div>
       </div>
 
       {/* Signature element: the glowing alias pill */}
@@ -65,14 +74,10 @@ function ResultCard({ result }) {
         ↳ {result.original_url}
       </p>
 
-      {result.expires_at && (
-        <p className={styles.expiryNote}>
-          <ClockIcon aria-hidden="true" /> Expires{' '}
-          {new Date(result.expires_at).toLocaleString(undefined, {
-            dateStyle: 'medium',
-            timeStyle: 'short',
-          })}
-        </p>
+      {formattedExpiry && (
+        <div className={styles.expiryPill} title={`Expires ${formattedExpiry}`}>
+          <ClockIcon aria-hidden="true" /> Expires {formattedExpiry}
+        </div>
       )}
     </div>
   )
@@ -135,7 +140,7 @@ export default function UrlShortener({ onSuccess }) {
       setResult(data)
       setUrl('')           
       setCustomAlias('')     
-      // setExpiresAt('')      
+      setExpiresAt('')      
       onSuccess?.(data)
     } catch (err) {
       if (err instanceof ApiError) {

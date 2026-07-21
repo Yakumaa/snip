@@ -229,13 +229,20 @@
   cursor: pointer;
 }
 
-/* Expiry note in the result card */
-.expiryNote {
-  display: flex;
+/* Expiry pill in the result card */
+.expiryPill {
+  display: inline-flex;
   align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  background: var(--color-surface-2);
+  border: 1px solid rgba(248, 113, 113, 0.25);
+  border-radius: var(--radius-pill);
+  color: var(--color-error);
   font-size: var(--text-xs);
-  color: var(--color-text-faint);
-  margin-top: var(--space-2);
+  font-weight: 600;
+  box-shadow: 0 0 16px rgba(248, 113, 113, 0.12);
+  white-space: nowrap;
 }
 
 /* Submit button */
@@ -365,8 +372,16 @@
 .resultHeader {
   display: flex;
   align-items: center;
-  gap: var(--space-2);
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
   margin-bottom: var(--space-4);
+}
+
+.resultStatus {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
 }
 
 .successDot {
@@ -462,6 +477,7 @@
 .originalUrl {
   font-size: var(--text-xs);
   color: var(--color-text-faint);
+  padding: var(--space-2) var(--space-3);
   font-family: var(--font-mono);
   overflow: hidden;
   text-overflow: ellipsis;

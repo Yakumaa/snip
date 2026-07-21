@@ -180,7 +180,7 @@ def check_ssrf_safety(url: str) -> Tuple[bool, Optional[str]]:
 
     return True, None
 
-ALIAS_PATTERN = re.compile(r"^[a-zA-Z0-9_-]{3,32}$")
+ALIAS_PATTERN = re.compile(r"^[a-zA-Z0-9_-]{6}$")
 
 # Reserved so custom aliases can't collide with real routes
 RESERVED_ALIASES = {
@@ -188,6 +188,7 @@ RESERVED_ALIASES = {
     "static", "favicon.ico", "robots.txt",
 }
 
+# TODO: alias works even when it is not 6 characters
 def is_valid_custom_alias(alias: str) -> tuple[bool, str]:
     """
     Validate a user-supplied custom alias.
