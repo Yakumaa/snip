@@ -188,7 +188,6 @@ RESERVED_ALIASES = {
     "static", "favicon.ico", "robots.txt",
 }
 
-# TODO: alias works even when it is not 6 characters
 def is_valid_custom_alias(alias: str) -> tuple[bool, str]:
     """
     Validate a user-supplied custom alias.
@@ -205,7 +204,7 @@ def is_valid_custom_alias(alias: str) -> tuple[bool, str]:
         return False, f"'{alias}' is a reserved word and cannot be used as an alias."
     return True, ""
 
-def parse_expiry(raw_expiry: str) -> tuple[datetime | None, str]:
+def parse_expiry(raw_expiry: str) -> tuple[datetime, str]:
     """
     Parse an ISO 8601 expiry timestamp from the client.
     Returns (parsed_datetime_or_None, error_message).

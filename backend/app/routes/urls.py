@@ -2,7 +2,7 @@ import hashlib
 import logging
 from datetime import datetime, timezone
 
-from flask import Blueprint, jsonify, redirect, request
+from flask import Blueprint, current_app, jsonify, redirect, request
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 from app.extensions import db
@@ -25,6 +25,12 @@ urls_bp = Blueprint("urls", __name__)
 
 # Helpers
 MAX_ALIAS_RETRIES = 5  # how many random attempts before falling back to hash
+
+
+def _build_expired_link_redirect(alias: str):
+    frontend_origin = current_app.config.get("FRONTEND_ORIGIN", request.host_url.rstrip("/"))
+    frontend_origin = frontend_origin.rstrip("/")
+    return redirect(f"{frontend_origin}/?expired=1&alias={alias}", code=302)
 
 def _make_unique_alias(original_url: str) -> str:
     """
@@ -168,7 +174,7 @@ def redirect_alias(alias: str):
         return jsonify({"error": f"Alias '{alias}' not found."}), 404
 
     if entry.expires_at and entry.expires_at < datetime.now(timezone.utc):
-        return jsonify({"error": "This link has expired."}), 410
+        return _build_expired_link_redirect(alias)
     
     try:
         ip = request.headers.get("X-Forwarded-For", request.remote_addr or "")
