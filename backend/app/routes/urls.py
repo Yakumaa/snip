@@ -2,7 +2,7 @@ import hashlib
 import logging
 from datetime import datetime, timezone
 
-from flask import Blueprint, current_app, jsonify, redirect, request
+from flask import Blueprint, current_app, jsonify, redirect, request, render_template
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 from app.extensions import db, redis_client
@@ -162,8 +162,8 @@ def shorten_url():
         "expires_at": expires_at.isoformat() if expires_at else None,
     }), 201
 
-# GET /<alias>  — redirect + click tracking
-@urls_bp.route("/<string:alias>", methods=["GET"])
+# GET /go/<alias>  — redirect + click tracking
+@urls_bp.route("/go/<string:alias>", methods=["GET"])
 def redirect_alias(alias: str):
     """
     Look up *alias*, record a click, and redirect to the original URL.
@@ -214,6 +214,33 @@ def redirect_alias(alias: str):
         logger.error("Failed to record click for alias '%s': %s", alias, exc)
 
     return redirect(entry.original_url, code=302)
+
+# GET /<alias> — preview page shown before the real redirect
+@urls_bp.route("/<string:alias>", methods=["GET"])
+def preview_alias(alias: str):
+    """
+    Look up *alias* and return its destination WITHOUT redirecting or recording a click.
+    Lets the frontend render a "you're about to visit X" confirmation page.
+
+    Responses:
+        200  { "alias": "...", "original_url": "...", "expires_at": "..." | null }
+        404  { "error": "Alias not found." }
+        410  { "error": "This link has expired." }
+    """
+    entry = ShortenedUrl.query.filter_by(alias=alias).first()
+    if entry is None:
+        return jsonify({"error": f"Alias '{alias}' not found."}), 404
+
+    if entry.expires_at and entry.expires_at < datetime.now(timezone.utc):
+        return _build_expired_link_redirect(alias)
+
+    return render_template(
+        "preview.html",
+        alias=alias,
+        original_url=entry.original_url,
+        expires_at=entry.expires_at,
+        frontend_origin=current_app.config["FRONTEND_ORIGIN"],
+    )
 
 # GET /api/health  — lightweight liveness probe
 @urls_bp.route("/api/health", methods=["GET"])
