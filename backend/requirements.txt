@@ -16,5 +16,8 @@ redis==5.2.1             # Redis client — backs the sliding-window rate limite
 # URL safety
 requests==2.32.3         # HTTP client — used to call Google Safe Browsing
 
+# Analytics
+user-agents==2.2.0       # Parses User-Agent strings into browser/OS/device-type
+
 # Utilities 
 python-dotenv==1.1.0     # Load .env files in development

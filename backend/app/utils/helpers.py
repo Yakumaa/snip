@@ -225,3 +225,34 @@ def parse_expiry(raw_expiry: str) -> tuple[datetime, str]:
         return None, "Expiry date must be in the future."
 
     return dt, ""
+
+# Referrer parsing
+MAX_REFERRER_LENGTH = 2048  # mirrors MAX_URL_LENGTH — referrers are also just URLs
+ 
+def normalise_referrer(raw_referrer: Optional[str]) -> Optional[str]:
+    """
+    Return *raw_referrer* trimmed to a sane length, or None if empty/missing.
+ 
+    We store the referrer as-is (it's diagnostic data, not something we redirect to or execute) rather than validating its shape the way we do for submitted URLs — a referrer can legitimately be almost anything a browser or app chooses to send, including empty.
+    """
+    if not raw_referrer:
+        return None
+    referrer = raw_referrer.strip()
+    if not referrer:
+        return None
+    return referrer[:MAX_REFERRER_LENGTH]
+ 
+ 
+def extract_referrer_domain(referrer: Optional[str]) -> str:
+    """
+    Return just the registrable-ish domain of *referrer* for grouping in the "top referrers" breakdown (e.g. "https://t.co/xyz" -> "t.co").
+ 
+    Falls back to "Direct / None" for missing referrers, and "Other" for a referrer string that doesn't parse as a URL at all — grouping by exact URL would fragment identical sources across query strings.
+    """
+    if not referrer:
+        return "Direct / None"
+    try:
+        hostname = urlparse(referrer).hostname
+    except ValueError:
+        return "Other"
+    return hostname.lower() if hostname else "Other"

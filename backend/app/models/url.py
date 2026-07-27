@@ -57,6 +57,14 @@ class Click(db.Model):
         index=True,   # indexed — queried heavily in range filters
     )
     ip_hash = db.Column(db.String(64), nullable=True)
+    referrer = db.Column(db.Text, nullable=True)
+    user_agent = db.Column(db.Text, nullable=True)
+    browser = db.Column(db.String(50), nullable=True, index=True)
+    os = db.Column(db.String(50), nullable=True, index=True)
+    device_type = db.Column(db.String(20), nullable=True, index=True)
+    country = db.Column(db.String(100), nullable=True)
+    country_code = db.Column(db.String(2), nullable=True, index=True)
+    city = db.Column(db.String(100), nullable=True)
 
     shortened_url = db.relationship("ShortenedUrl", back_populates="clicks")
 
@@ -68,4 +76,11 @@ class Click(db.Model):
             "id": self.id,
             "shortened_url_id": self.shortened_url_id,
             "clicked_at": self.clicked_at.isoformat(),
+            "referrer": self.referrer,
+            "browser": self.browser,
+            "os": self.os,
+            "device_type": self.device_type,
+            "country": self.country,
+            "country_code": self.country_code,
+            "city": self.city,
         }

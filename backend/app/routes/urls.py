@@ -5,19 +5,23 @@ from datetime import datetime, timezone
 from flask import Blueprint, current_app, jsonify, redirect, request
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
-from app.extensions import db
+from app.extensions import db, redis_client
 from app.middleware.rate_limiter import rate_limit
 from app.models.url import Click, ShortenedUrl
 from app.services.safe_browsing import check_url_safety
+from app.services.geolocation import get_geolocation
 from app.utils.helpers import (
     check_ssrf_safety,
+    extract_referrer_domain,
     generate_alias,
     generate_alias_from_url,
     is_valid_url,
     is_valid_custom_alias,
+    normalise_referrer,
     parse_expiry,
     normalise_url,
 )
+from app.utils.user_agent import parse_user_agent
 
 logger = logging.getLogger(__name__)
 
@@ -179,11 +183,29 @@ def redirect_alias(alias: str):
     try:
         ip = request.headers.get("X-Forwarded-For", request.remote_addr or "")
         client_ip = ip.split(",")[0].strip()
+        ip_hash = _hash_ip(client_ip) if client_ip else None
+
+        ua_fields = parse_user_agent(request.headers.get("User-Agent"))
+
+        # Geolocation needs the raw IP to make the lookup, but only the resolved country/city are ever persisted or returned — the raw IP itself never touches the database (see services/geolocation.py).
+        geo_fields = (
+            get_geolocation(client_ip, ip_hash, redis_client=redis_client)
+            if client_ip and ip_hash
+            else {"country": None, "country_code": None, "city": None}
+        )
 
         click = Click(
             shortened_url_id=entry.id,
             clicked_at=datetime.now(timezone.utc),
-            ip_hash=_hash_ip(client_ip) if client_ip else None,
+            ip_hash=ip_hash,
+            referrer=normalise_referrer(request.referrer),
+            user_agent=request.headers.get("User-Agent"),
+            browser=ua_fields["browser"],
+            os=ua_fields["os"],
+            device_type=ua_fields["device_type"],
+            country=geo_fields["country"],
+            country_code=geo_fields["country_code"],
+            city=geo_fields["city"],
         )
         db.session.add(click)
         db.session.commit()
@@ -320,12 +342,101 @@ def get_analytics(alias: str):
             "clicks": clicks_by_date.get(day, 0),
         })
  
+    # Enhanced analytics breakdowns — device/browser/OS/country are cheap GROUP BY queries because they're parsed and stored at click time (see app/utils/user_agent.py), not re-parsed here from raw strings. All-time totals (not scoped to 7 days) since these breakdowns are about *who* is clicking rather than *when*.
+    try:
+        device_rows = db.session.execute(
+            db.text("""
+                SELECT COALESCE(c.device_type, 'unknown') AS device_type, COUNT(*) AS count
+                FROM clicks c
+                JOIN shortened_urls su ON su.id = c.shortened_url_id
+                WHERE su.alias = :alias
+                GROUP BY device_type
+                ORDER BY count DESC
+            """),
+            {"alias": alias},
+        ).fetchall()
+
+        browser_rows = db.session.execute(
+            db.text("""
+                SELECT COALESCE(c.browser, 'Unknown') AS browser, COUNT(*) AS count
+                FROM clicks c
+                JOIN shortened_urls su ON su.id = c.shortened_url_id
+                WHERE su.alias = :alias
+                GROUP BY browser
+                ORDER BY count DESC
+                LIMIT 10
+            """),
+            {"alias": alias},
+        ).fetchall()
+
+        os_rows = db.session.execute(
+            db.text("""
+                SELECT COALESCE(c.os, 'Unknown') AS os, COUNT(*) AS count
+                FROM clicks c
+                JOIN shortened_urls su ON su.id = c.shortened_url_id
+                WHERE su.alias = :alias
+                GROUP BY os
+                ORDER BY count DESC
+                LIMIT 10
+            """),
+            {"alias": alias},
+        ).fetchall()
+
+        country_rows = db.session.execute(
+            db.text("""
+                SELECT
+                    COALESCE(c.country, 'Unknown') AS country,
+                    c.country_code AS country_code,
+                    COUNT(*) AS count
+                FROM clicks c
+                JOIN shortened_urls su ON su.id = c.shortened_url_id
+                WHERE su.alias = :alias
+                GROUP BY country, country_code
+                ORDER BY count DESC
+                LIMIT 15
+            """),
+            {"alias": alias},
+        ).fetchall()
+
+        referrer_rows = db.session.execute(
+            db.text("""
+                SELECT c.referrer AS referrer, COUNT(*) AS count
+                FROM clicks c
+                JOIN shortened_urls su ON su.id = c.shortened_url_id
+                WHERE su.alias = :alias
+                GROUP BY referrer
+            """),
+            {"alias": alias},
+        ).fetchall()
+    except SQLAlchemyError as exc:
+        logger.exception("Enhanced analytics query failed for alias '%s': %s", alias, exc)
+        return jsonify({"error": "Database error. Please try again."}), 500
+
+    # Referrer domains are grouped in Python rather than SQL: many distinct referrer URLs (different query strings, paths) collapse to the same domain, and that grouping key (extract_referrer_domain) is shared with anything else in the codebase that needs it — keeping the "what counts as the same referrer" logic in one place instead of duplicated as a SQL expression.
+    referrer_totals: dict[str, int] = {}
+    for row in referrer_rows:
+        domain = extract_referrer_domain(row.referrer)
+        referrer_totals[domain] = referrer_totals.get(domain, 0) + row.count
+    top_referrers = sorted(
+        ({"referrer": k, "clicks": v} for k, v in referrer_totals.items()),
+        key=lambda r: r["clicks"],
+        reverse=True,
+    )[:10]
+
     return jsonify({
         "alias": alias,
         "original_url": entry.original_url,
         "short_url": f"{request.host_url.rstrip('/')}/{alias}",
         "total_clicks": entry.to_dict()["total_clicks"],
         "analytics": analytics,
+        "devices": [{"device_type": r.device_type, "clicks": r.count} for r in device_rows],
+        "browsers": [{"browser": r.browser, "clicks": r.count} for r in browser_rows],
+        "operating_systems": [{"os": r.os, "clicks": r.count} for r in os_rows],
+        "countries": [
+            {"country": r.country, "country_code": r.country_code, "clicks": r.count}
+            for r in country_rows
+        ],
+        "top_referrers": top_referrers,
     }), 200
  
 @urls_bp.route("/api/debug/rate-limit", methods=["GET"])
