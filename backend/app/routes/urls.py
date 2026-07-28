@@ -1,21 +1,29 @@
+import base64
 import hashlib
 import logging
 from datetime import datetime, timezone
 
-from flask import Blueprint, jsonify, redirect, request
+from flask import Blueprint, Response, current_app, jsonify, redirect, request, render_template
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
-from app.extensions import db
+from app.extensions import db, redis_client
 from app.middleware.rate_limiter import rate_limit
 from app.models.url import Click, ShortenedUrl
 from app.services.safe_browsing import check_url_safety
+from app.services.geolocation import get_geolocation
 from app.utils.helpers import (
     check_ssrf_safety,
+    extract_referrer_domain,
     generate_alias,
     generate_alias_from_url,
     is_valid_url,
+    is_valid_custom_alias,
+    normalise_referrer,
+    parse_expiry,
     normalise_url,
 )
+from app.utils.qr_code import DEFAULT_BOX_SIZE, MAX_BOX_SIZE, MIN_BOX_SIZE, generate_qr_png
+from app.utils.user_agent import parse_user_agent
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +31,23 @@ urls_bp = Blueprint("urls", __name__)
 
 # Helpers
 MAX_ALIAS_RETRIES = 5  # how many random attempts before falling back to hash
+
+def _get_base_url() -> str:
+    """
+    Return the base URL to use when building self-referential links
+    (short_url, qr_code_url).
+
+    Prefers the explicit PUBLIC_BASE_URL config value when set — see
+    app/config.py for why this matters — and falls back to
+    request.host_url for backward compatibility with single-hop setups
+    that don't configure it.
+    """
+    return current_app.config.get("PUBLIC_BASE_URL") or request.host_url.rstrip("/")
+
+def _build_expired_link_redirect(alias: str):
+    frontend_origin = current_app.config.get("FRONTEND_ORIGIN", request.host_url.rstrip("/"))
+    frontend_origin = frontend_origin.rstrip("/")
+    return redirect(f"{frontend_origin}/?expired=1&alias={alias}", code=302)
 
 def _make_unique_alias(original_url: str) -> str:
     """
@@ -97,15 +122,42 @@ def shorten_url():
             )
         }), 400
 
+    # Custom alias handling
+    custom_alias = (data.get("custom_alias") or "").strip()
+
+    if custom_alias:
+        is_valid, reason = is_valid_custom_alias(custom_alias)
+        if not is_valid:
+            return jsonify({"error": reason}), 400
+
+        if ShortenedUrl.query.filter_by(alias=custom_alias).first():
+            return jsonify({
+                "error": f"Alias '{custom_alias}' is already taken. Please choose another."
+            }), 409
+
+        alias = custom_alias
+    else:
+        try:
+            alias = _make_unique_alias(original_url)
+        except RuntimeError as exc:
+            logger.error("Alias generation failed: %s", exc)
+            return jsonify({"error": str(exc)}), 500
+        
+    # Expiry handling
+    raw_expiry = (data.get("expires_at") or "").strip()
+    expires_at, expiry_error = parse_expiry(raw_expiry)
+    if expiry_error:
+        return jsonify({"error": expiry_error}), 400
+    
     # Alias generation + DB write 
     try:
-        alias = _make_unique_alias(original_url)
-        entry = ShortenedUrl(original_url=original_url, alias=alias)
+        # alias = _make_unique_alias(original_url)
+        entry = ShortenedUrl(original_url=original_url, alias=alias, expires_at=expires_at)
         db.session.add(entry)
         db.session.commit()
-    except RuntimeError as exc:
-        logger.error("Alias generation failed: %s", exc)
-        return jsonify({"error": str(exc)}), 500
+    # except RuntimeError as exc:
+    #     logger.error("Alias generation failed: %s", exc)
+    #     return jsonify({"error": str(exc)}), 500
     except IntegrityError:
         db.session.rollback()
         logger.warning("IntegrityError on alias '%s' — race condition, ask client to retry.", alias)
@@ -115,15 +167,17 @@ def shorten_url():
         logger.exception("Database error while shortening URL: %s", exc)
         return jsonify({"error": "A database error occurred. Please try again."}), 500
 
-    base_url = request.host_url.rstrip("/")
+    base_url = _get_base_url()
     return jsonify({
         "alias": alias,
         "short_url": f"{base_url}/{alias}",
         "original_url": original_url,
+        "expires_at": expires_at.isoformat() if expires_at else None,
+        "qr_code_url": f"{base_url}/api/urls/{alias}/qr?format=png",
     }), 201
 
-# GET /<alias>  — redirect + click tracking
-@urls_bp.route("/<string:alias>", methods=["GET"])
+# GET /go/<alias>  — redirect + click tracking
+@urls_bp.route("/go/<string:alias>", methods=["GET"])
 def redirect_alias(alias: str):
     """
     Look up *alias*, record a click, and redirect to the original URL.
@@ -137,14 +191,35 @@ def redirect_alias(alias: str):
     if entry is None:
         return jsonify({"error": f"Alias '{alias}' not found."}), 404
 
+    if entry.expires_at and entry.expires_at < datetime.now(timezone.utc):
+        return _build_expired_link_redirect(alias)
+    
     try:
         ip = request.headers.get("X-Forwarded-For", request.remote_addr or "")
         client_ip = ip.split(",")[0].strip()
+        ip_hash = _hash_ip(client_ip) if client_ip else None
+
+        ua_fields = parse_user_agent(request.headers.get("User-Agent"))
+
+        # Geolocation needs the raw IP to make the lookup, but only the resolved country/city are ever persisted or returned — the raw IP itself never touches the database (see services/geolocation.py).
+        geo_fields = (
+            get_geolocation(client_ip, ip_hash, redis_client=redis_client)
+            if client_ip and ip_hash
+            else {"country": None, "country_code": None, "city": None}
+        )
 
         click = Click(
             shortened_url_id=entry.id,
             clicked_at=datetime.now(timezone.utc),
-            ip_hash=_hash_ip(client_ip) if client_ip else None,
+            ip_hash=ip_hash,
+            referrer=normalise_referrer(request.referrer),
+            user_agent=request.headers.get("User-Agent"),
+            browser=ua_fields["browser"],
+            os=ua_fields["os"],
+            device_type=ua_fields["device_type"],
+            country=geo_fields["country"],
+            country_code=geo_fields["country_code"],
+            city=geo_fields["city"],
         )
         db.session.add(click)
         db.session.commit()
@@ -153,6 +228,96 @@ def redirect_alias(alias: str):
         logger.error("Failed to record click for alias '%s': %s", alias, exc)
 
     return redirect(entry.original_url, code=302)
+
+# GET /<alias> — preview page shown before the real redirect
+@urls_bp.route("/<string:alias>", methods=["GET"])
+def preview_alias(alias: str):
+    """
+    Look up *alias* and return its destination WITHOUT redirecting or recording a click.
+    Lets the frontend render a "you're about to visit X" confirmation page.
+
+    Responses:
+        200  { "alias": "...", "original_url": "...", "expires_at": "..." | null }
+        404  { "error": "Alias not found." }
+        410  { "error": "This link has expired." }
+    """
+    entry = ShortenedUrl.query.filter_by(alias=alias).first()
+    if entry is None:
+        return jsonify({"error": f"Alias '{alias}' not found."}), 404
+
+    if entry.expires_at and entry.expires_at < datetime.now(timezone.utc):
+        return _build_expired_link_redirect(alias)
+
+    return render_template(
+        "preview.html",
+        alias=alias,
+        original_url=entry.original_url,
+        expires_at=entry.expires_at,
+        frontend_origin=current_app.config["FRONTEND_ORIGIN"],
+    )
+
+# GET /api/urls/<alias>/qr  — QR code for the short link
+@urls_bp.route("/api/urls/<string:alias>/qr", methods=["GET"])
+def get_qr_code(alias: str):
+    """
+    Generate a QR code that encodes this alias's short URL — scanning it
+    with a phone camera goes straight to the same place the short link does.
+
+    Query params:
+        size      Optional box_size — pixels per QR "module" — clamped to [1, 40]. Default 10. Controls overall image size/resolution, not information density (that's fixed by the URL length).
+        format    "json" (default) — { "qr_code": "data:image/png;base64,..." }, a data: URI, handy for embedding directly or downloading without a second request.
+                  "png"  — raw image/png bytes. This is what "qr_code_url" (returned by /api/shorten and /api/urls) points at, so it can be used directly as an <img src=...> with no JS-side base64 decoding needed.
+        download  Only applies when format=png. If truthy ("1"/"true"), sets Content-Disposition: attachment so a plain <a href=... download> link forces a save-as even when the frontend andbackend are on different origins (the HTML `download` attribute alone is unreliable cross-origin without this).
+
+    Responses:
+        200  JSON body (format=json) or raw PNG (format=png)
+        400  { "error": "..." }               — 'size' isn't a valid integer
+        404  { "error": "Alias '...' not found." }
+        500  { "error": "..." }               — QR generation failed unexpectedly
+    """
+    entry = ShortenedUrl.query.filter_by(alias=alias).first()
+    if entry is None:
+        return jsonify({"error": f"Alias '{alias}' not found."}), 404
+
+    raw_size = request.args.get("size", "").strip()
+    size = DEFAULT_BOX_SIZE
+    if raw_size:
+        try:
+            size = int(raw_size)
+        except ValueError:
+            return jsonify({
+                "error": f"'size' must be an integer between {MIN_BOX_SIZE} and {MAX_BOX_SIZE}."
+            }), 400
+
+    fmt = request.args.get("format", "json").strip().lower()
+    short_url = f"{_get_base_url()}/{alias}"
+
+    try:
+        png_bytes = generate_qr_png(short_url, box_size=size)
+    except Exception as exc:
+        # qrcode/Pillow are well-behaved for any string input, but a QR code is a nice-to-have, not core redirect functionality — if generation ever does misbehave, fail with a clean 500 rather than letting whatever the underlying library raised bubble up.
+        logger.exception("QR code generation failed for alias '%s': %s", alias, exc)
+        return jsonify({"error": "Failed to generate QR code. Please try again."}), 500
+
+    if fmt == "png":
+        response = Response(png_bytes, mimetype="image/png")
+        # The QR content is just this alias's short URL, which never changes after creation, so this is safe to cache aggressively — unlike click data, there's no "freshness" concept here.
+        response.headers["Cache-Control"] = "public, max-age=86400, immutable"
+
+        wants_download = request.args.get("download", "").strip().lower() in ("1", "true", "yes")
+        if wants_download:
+            response.headers["Content-Disposition"] = f'attachment; filename="snip-{alias}-qr.png"'
+
+        return response
+
+    is_expired = bool(entry.expires_at and entry.expires_at < datetime.now(timezone.utc))
+    encoded = base64.b64encode(png_bytes).decode()
+    return jsonify({
+        "alias": alias,
+        "short_url": short_url,
+        "qr_code": f"data:image/png;base64,{encoded}",
+        "is_expired": is_expired,
+    }), 200
 
 # GET /api/health  — lightweight liveness probe
 @urls_bp.route("/api/health", methods=["GET"])
@@ -198,13 +363,14 @@ def list_urls():
         logger.exception("Failed to list URLs: %s", exc)
         return jsonify({"error": "Database error. Please try again."}), 500
  
-    base_url = request.host_url.rstrip("/")
+    base_url = _get_base_url()
  
     return jsonify({
         "urls": [
             {
                 **entry.to_dict(),
                 "short_url": f"{base_url}/{entry.alias}",
+                "qr_code_url": f"{base_url}/api/urls/{entry.alias}/qr?format=png",
             }
             for entry in entries
         ]
@@ -281,12 +447,101 @@ def get_analytics(alias: str):
             "clicks": clicks_by_date.get(day, 0),
         })
  
+    # Enhanced analytics breakdowns — device/browser/OS/country are cheap GROUP BY queries because they're parsed and stored at click time (see app/utils/user_agent.py), not re-parsed here from raw strings. All-time totals (not scoped to 7 days) since these breakdowns are about *who* is clicking rather than *when*.
+    try:
+        device_rows = db.session.execute(
+            db.text("""
+                SELECT COALESCE(c.device_type, 'unknown') AS device_type, COUNT(*) AS count
+                FROM clicks c
+                JOIN shortened_urls su ON su.id = c.shortened_url_id
+                WHERE su.alias = :alias
+                GROUP BY device_type
+                ORDER BY count DESC
+            """),
+            {"alias": alias},
+        ).fetchall()
+
+        browser_rows = db.session.execute(
+            db.text("""
+                SELECT COALESCE(c.browser, 'Unknown') AS browser, COUNT(*) AS count
+                FROM clicks c
+                JOIN shortened_urls su ON su.id = c.shortened_url_id
+                WHERE su.alias = :alias
+                GROUP BY browser
+                ORDER BY count DESC
+                LIMIT 10
+            """),
+            {"alias": alias},
+        ).fetchall()
+
+        os_rows = db.session.execute(
+            db.text("""
+                SELECT COALESCE(c.os, 'Unknown') AS os, COUNT(*) AS count
+                FROM clicks c
+                JOIN shortened_urls su ON su.id = c.shortened_url_id
+                WHERE su.alias = :alias
+                GROUP BY os
+                ORDER BY count DESC
+                LIMIT 10
+            """),
+            {"alias": alias},
+        ).fetchall()
+
+        country_rows = db.session.execute(
+            db.text("""
+                SELECT
+                    COALESCE(c.country, 'Unknown') AS country,
+                    c.country_code AS country_code,
+                    COUNT(*) AS count
+                FROM clicks c
+                JOIN shortened_urls su ON su.id = c.shortened_url_id
+                WHERE su.alias = :alias
+                GROUP BY country, country_code
+                ORDER BY count DESC
+                LIMIT 15
+            """),
+            {"alias": alias},
+        ).fetchall()
+
+        referrer_rows = db.session.execute(
+            db.text("""
+                SELECT c.referrer AS referrer, COUNT(*) AS count
+                FROM clicks c
+                JOIN shortened_urls su ON su.id = c.shortened_url_id
+                WHERE su.alias = :alias
+                GROUP BY referrer
+            """),
+            {"alias": alias},
+        ).fetchall()
+    except SQLAlchemyError as exc:
+        logger.exception("Enhanced analytics query failed for alias '%s': %s", alias, exc)
+        return jsonify({"error": "Database error. Please try again."}), 500
+
+    # Referrer domains are grouped in Python rather than SQL: many distinct referrer URLs (different query strings, paths) collapse to the same domain, and that grouping key (extract_referrer_domain) is shared with anything else in the codebase that needs it — keeping the "what counts as the same referrer" logic in one place instead of duplicated as a SQL expression.
+    referrer_totals: dict[str, int] = {}
+    for row in referrer_rows:
+        domain = extract_referrer_domain(row.referrer)
+        referrer_totals[domain] = referrer_totals.get(domain, 0) + row.count
+    top_referrers = sorted(
+        ({"referrer": k, "clicks": v} for k, v in referrer_totals.items()),
+        key=lambda r: r["clicks"],
+        reverse=True,
+    )[:10]
+
     return jsonify({
         "alias": alias,
         "original_url": entry.original_url,
-        "short_url": f"{request.host_url.rstrip('/')}/{alias}",
+        "short_url": f"{_get_base_url()}/{alias}",
         "total_clicks": entry.to_dict()["total_clicks"],
         "analytics": analytics,
+        "devices": [{"device_type": r.device_type, "clicks": r.count} for r in device_rows],
+        "browsers": [{"browser": r.browser, "clicks": r.count} for r in browser_rows],
+        "operating_systems": [{"os": r.os, "clicks": r.count} for r in os_rows],
+        "countries": [
+            {"country": r.country, "country_code": r.country_code, "clicks": r.count}
+            for r in country_rows
+        ],
+        "top_referrers": top_referrers,
     }), 200
  
 @urls_bp.route("/api/debug/rate-limit", methods=["GET"])

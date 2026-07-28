@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { shortenUrl, ApiError } from '../services/api'
 import { useCountdown } from '../hooks/useCountdown'
+import QrCodeBlock from './QrCodeBlock'
 import styles from './UrlShortener.module.css'
 
 function CopyButton({ text }) {
@@ -36,34 +37,55 @@ function CopyButton({ text }) {
 }
 
 function ResultCard({ result }) {
+  const formattedExpiry = result.expires_at
+    ? new Date(result.expires_at).toLocaleString(undefined, {
+        dateStyle: 'medium',
+        timeStyle: 'short',
+      })
+    : null
+
   return (
     <div className={styles.resultCard} role="status" aria-live="polite">
-      <div className={styles.resultHeader}>
-        <span className={styles.successDot} aria-hidden="true" />
-        <span className={styles.resultLabel}>Link ready</span>
+      <div className={styles.resultMain}>
+        <div className={styles.resultHeader}>
+          <div className={styles.resultStatus}>
+            <span className={styles.successDot} aria-hidden="true" />
+            <span className={styles.resultLabel}>Link ready</span>
+          </div>
+        </div>
+
+        {/* Signature element: the glowing alias pill */}
+        <div className={styles.aliasPill}>
+          <span className={styles.aliasBase}>Alias: /</span>
+          <span className={styles.aliasCode}>{result.alias}</span>
+        </div>
+
+        <div className={styles.resultActions}>
+          <a
+            href={result.short_url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={styles.shortUrl}
+          >
+            {result.short_url}
+          </a>
+          <CopyButton text={result.short_url} />
+        </div>
+
+        <p className={styles.originalUrl} title={result.original_url}>
+          ↳ {result.original_url}
+        </p>
+
+        {formattedExpiry && (
+          <div className={styles.expiryPill} title={`Expires ${formattedExpiry}`}>
+            <ClockIcon aria-hidden="true" /> Expires {formattedExpiry}
+          </div>
+        )}
       </div>
 
-      {/* Signature element: the glowing alias pill */}
-      <div className={styles.aliasPill}>
-        <span className={styles.aliasBase}>Alias: /</span>
-        <span className={styles.aliasCode}>{result.alias}</span>
+      <div className={styles.resultQr}>
+        <QrCodeBlock qrCodeUrl={result.qr_code_url} alias={result.alias} size={200} />
       </div>
-
-      <div className={styles.resultActions}>
-        <a
-          href={result.short_url}
-          target="_blank"
-          rel="noopener noreferrer"
-          className={styles.shortUrl}
-        >
-          {result.short_url}
-        </a>
-        <CopyButton text={result.short_url} />
-      </div>
-
-      <p className={styles.originalUrl} title={result.original_url}>
-        ↳ {result.original_url}
-      </p>
     </div>
   )
 }
@@ -101,7 +123,10 @@ function RateLimitBanner({ secondsLeft }) {
 export default function UrlShortener({ onSuccess }) {
   const [url, setUrl]         = useState('')
   const [result, setResult]   = useState(null)
+  const [customAlias, setCustomAlias] = useState("");
+  const [aliasError, setAliasError] = useState("");
   const [error, setError]     = useState(null)
+  const [expiresAt, setExpiresAt] = useState('')
   const [loading, setLoading] = useState(false)
 
   const { secondsLeft, start: startCountdown, isActive: isRateLimited } = useCountdown(0)
@@ -117,15 +142,20 @@ export default function UrlShortener({ onSuccess }) {
     setResult(null)
 
     try {
-      const data = await shortenUrl(url.trim())
+      const isoExpiry = expiresAt ? new Date(expiresAt).toISOString() : undefined
+      const data = await shortenUrl(url.trim(), customAlias.trim(), isoExpiry)
       setResult(data)
       setUrl('')           
+      setCustomAlias('')     
+      setExpiresAt('')      
       onSuccess?.(data)
     } catch (err) {
       if (err instanceof ApiError) {
         if (err.status === 429) {
           const retryAfter = err.data?.retry_after_seconds ?? 60
           startCountdown(retryAfter)
+        } else if (err.status === 409) {
+          setAliasError(err.message)
         } else {
           setError(err.message)
         }
@@ -159,8 +189,8 @@ export default function UrlShortener({ onSuccess }) {
               value={url}
               onChange={(e) => {
                 setUrl(e.target.value)
-                if (error) setError(null)   
-                if (result) setResult(null) 
+                if (error) setError(null)
+                if (result) setResult(null)
               }}
               disabled={isRateLimited || loading}
               aria-label="Long URL to shorten"
@@ -186,6 +216,54 @@ export default function UrlShortener({ onSuccess }) {
             )}
           </button>
         </div>
+
+        <div className={styles.optionsRow}>
+          <div className={styles.fieldGroup}>
+            <label htmlFor="alias-input" className={styles.fieldLabel}>
+              Custom alias <span className={styles.optionalTag}>(optional)</span>
+            </label>
+            <div className={styles.aliasFieldWrap}>
+              <span className={styles.aliasSeparator} aria-hidden="true">/</span>
+              <input
+                id="alias-input"
+                type="text"
+                className={styles.aliasInput}
+                placeholder="e.g. alias1"
+                value={customAlias}
+                onChange={(e) => {
+                  setCustomAlias(e.target.value)
+                  if (aliasError) setAliasError(null)
+                }}
+                disabled={isRateLimited || loading}
+                maxLength={6}
+              />
+            </div>
+          </div>
+
+          <div className={styles.fieldGroup}>
+            <label htmlFor="expiry-input" className={styles.fieldLabel}>
+              Expires <span className={styles.optionalTag}>(optional)</span>
+            </label>
+            <div className={`${styles.expiryWrap} ${isRateLimited ? styles.inputDisabled : ''}`}>
+              <ClockIcon className={styles.inputIcon} />
+              <input
+                id="expiry-input"
+                type="datetime-local"
+                className={styles.expiryInput}
+                value={expiresAt}
+                onChange={(e) => setExpiresAt(e.target.value)}
+                min={new Date().toISOString().slice(0, 16)}
+                disabled={isRateLimited || loading}
+              />
+            </div>
+          </div>
+        </div>
+
+        {aliasError && (
+          <p className={styles.errorMsg} role="alert">
+            <ErrorIcon aria-hidden="true" /> {aliasError}
+          </p>
+        )}
 
         {error && (
           <p id="url-error" className={styles.errorMsg} role="alert">
@@ -231,6 +309,15 @@ function TimerIcon({ className }) {
   return (
     <svg className={className} width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       <circle cx="12" cy="12" r="9"/>
+      <polyline points="12 6 12 12 16 14"/>
+    </svg>
+  )
+}
+
+function ClockIcon({ className }) {
+  return (
+    <svg className={className} width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <circle cx="12" cy="12" r="10"/>
       <polyline points="12 6 12 12 16 14"/>
     </svg>
   )

@@ -1,7 +1,7 @@
 /* Wrapper */
 .wrapper {
   width: 100%;
-  max-width: 680px;
+  max-width: 1100px;
   margin: 0 auto;
   padding: var(--space-8) var(--space-4);
 }
@@ -101,6 +101,150 @@
 .inputDisabled .input {
   border-color: var(--color-warning);
   box-shadow: 0 0 0 3px rgba(251, 191, 36, 0.12);
+}
+
+/* Options row — secondary, optional fields */
+.optionsRow {
+  display: flex;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+}
+
+.fieldGroup {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.fieldLabel {
+  font-size: var(--text-xs);
+  font-family: var(--font-ui);
+  color: var(--color-text-muted);
+  font-weight: 500;
+}
+
+.optionalTag {
+  color: var(--color-text-faint);
+  font-weight: 400;
+}
+
+.aliasFieldWrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.aliasSeparator {
+  position: absolute;
+  left: var(--space-3);
+  color: var(--color-text-faint);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  pointer-events: none;
+}
+
+.aliasInput {
+  width: 128px;
+  height: 52px;
+  padding: 0 var(--space-3) 0 calc(var(--space-3) + 10px);
+  background: var(--color-surface);
+  border: 1.5px solid var(--color-border);
+  border-radius: var(--radius-md);
+  color: var(--color-text);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  transition:
+    border-color var(--duration-fast) var(--ease),
+    box-shadow var(--duration-fast) var(--ease);
+  outline: none;
+}
+
+.aliasInput::placeholder {
+  color: var(--color-text-faint);
+  font-family: var(--font-ui);
+}
+
+.aliasInput:focus {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 3px var(--color-accent-glow);
+}
+
+.aliasInput:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.expiryWrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.expiryWrap:focus-within .inputIcon {
+  color: var(--color-accent);
+}
+
+.expiryInput {
+  /* Tell the browser to theme native controls (icon, dropdown chrome) dark,
+     so the picker icon and internals match the app instead of defaulting
+     to a light-mode render that looked washed-out/white */
+  color-scheme: dark;
+
+  width: 100%;
+  height: 52px;
+  padding: 0 var(--space-4) 0 calc(var(--space-4) + 18px + var(--space-3));
+  background: var(--color-surface);
+  border: 1.5px solid var(--color-border);
+  border-radius: var(--radius-md);
+  color: var(--color-text);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  transition:
+    border-color var(--duration-fast) var(--ease),
+    box-shadow var(--duration-fast) var(--ease);
+  outline: none;
+}
+
+.expiryInput:focus {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 3px var(--color-accent-glow);
+}
+
+.expiryInput:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* Hide the native calendar icon visually but keep it clickable and
+   stretched over the full field, so our custom .inputIcon (positioned
+   left, same as the URL field) can sit on top as the visible icon */
+.expiryInput::-webkit-calendar-picker-indicator {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+/* Expiry pill in the result card */
+.expiryPill {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: fit-content;
+  margin-top: var(--space-4);
+  padding: var(--space-2) var(--space-4);
+  background: var(--color-surface-2);
+  border: 1px solid rgba(248, 113, 113, 0.25);
+  border-radius: var(--radius-pill);
+  color: var(--color-error);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  box-shadow: 0 0 16px rgba(248, 113, 113, 0.12);
+  white-space: nowrap;
 }
 
 /* Submit button */
@@ -225,13 +369,31 @@
   border: 1px solid rgba(52, 211, 153, 0.2);
   border-radius: var(--radius-md);
   animation: slideDown var(--duration-base) var(--ease);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-5);
+}
+
+.resultMain {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
 }
 
 .resultHeader {
   display: flex;
   align-items: center;
-  gap: var(--space-2);
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
   margin-bottom: var(--space-4);
+}
+
+.resultStatus {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
 }
 
 .successDot {
@@ -255,6 +417,7 @@
   display: inline-flex;
   align-items: baseline;
   gap: 2px;
+  width: fit-content;
   background: var(--color-surface-2);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-pill);
@@ -302,6 +465,7 @@
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
   color: var(--color-text-muted);
+  font-family: var(--font-ui);
   font-size: var(--text-xs);
   font-weight: 500;
   cursor: pointer;
@@ -324,9 +488,18 @@
   background: var(--color-success-bg) !important;
 }
 
+.resultQr {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  flex-shrink: 0;
+  min-width: 140px;
+}
+
 .originalUrl {
   font-size: var(--text-xs);
   color: var(--color-text-faint);
+  padding: var(--space-2) var(--space-3);
   font-family: var(--font-mono);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -349,6 +522,16 @@
 @media (max-width: 560px) {
   .inputRow {
     flex-direction: column;
+  }
+
+  .optionsRow {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .aliasInput,
+  .expiryInput {
+    width: 100%;
   }
 
   .submitBtn {

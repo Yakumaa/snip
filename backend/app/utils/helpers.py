@@ -6,6 +6,7 @@ import socket
 import string
 from urllib.parse import urlparse
 from typing import Tuple, Optional
+from datetime import datetime, timezone
 
 # Alias generation
 ALIAS_CHARS = string.ascii_letters + string.digits  # a-z A-Z 0-9
@@ -178,3 +179,80 @@ def check_ssrf_safety(url: str) -> Tuple[bool, Optional[str]]:
             return False, f"URL's hostname resolves to a private or internal address ({ip_str})."
 
     return True, None
+
+ALIAS_PATTERN = re.compile(r"^[a-zA-Z0-9_-]{6}$")
+
+# Reserved so custom aliases can't collide with real routes
+RESERVED_ALIASES = {
+    "api", "health", "shorten", "urls", "analytics",
+    "static", "favicon.ico", "robots.txt",
+}
+
+def is_valid_custom_alias(alias: str) -> tuple[bool, str]:
+    """
+    Validate a user-supplied custom alias.
+    Returns (is_valid, reason_if_invalid).
+    """
+    if not alias:
+        return False, "Custom alias cannot be empty."
+    if not ALIAS_PATTERN.match(alias):
+        return False, (
+            "Custom alias must be 6 characters and contain only "
+            "letters, numbers, hyphens, and underscores."
+        )
+    if alias.lower() in RESERVED_ALIASES:
+        return False, f"'{alias}' is a reserved word and cannot be used as an alias."
+    return True, ""
+
+def parse_expiry(raw_expiry: str) -> tuple[datetime, str]:
+    """
+    Parse an ISO 8601 expiry timestamp from the client.
+    Returns (parsed_datetime_or_None, error_message).
+    """
+    if not raw_expiry:
+        return None, ""
+
+    try:
+        # Accept "Z" suffix as well as explicit offsets
+        dt = datetime.fromisoformat(raw_expiry.replace("Z", "+00:00"))
+    except ValueError:
+        return None, "Invalid expiry date format. Use ISO 8601 (e.g. 2026-08-01T00:00:00Z)."
+
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+
+    if dt <= datetime.now(timezone.utc):
+        return None, "Expiry date must be in the future."
+
+    return dt, ""
+
+# Referrer parsing
+MAX_REFERRER_LENGTH = 2048  # mirrors MAX_URL_LENGTH — referrers are also just URLs
+ 
+def normalise_referrer(raw_referrer: Optional[str]) -> Optional[str]:
+    """
+    Return *raw_referrer* trimmed to a sane length, or None if empty/missing.
+ 
+    We store the referrer as-is (it's diagnostic data, not something we redirect to or execute) rather than validating its shape the way we do for submitted URLs — a referrer can legitimately be almost anything a browser or app chooses to send, including empty.
+    """
+    if not raw_referrer:
+        return None
+    referrer = raw_referrer.strip()
+    if not referrer:
+        return None
+    return referrer[:MAX_REFERRER_LENGTH]
+ 
+ 
+def extract_referrer_domain(referrer: Optional[str]) -> str:
+    """
+    Return just the registrable-ish domain of *referrer* for grouping in the "top referrers" breakdown (e.g. "https://t.co/xyz" -> "t.co").
+ 
+    Falls back to "Direct / None" for missing referrers, and "Other" for a referrer string that doesn't parse as a URL at all — grouping by exact URL would fragment identical sources across query strings.
+    """
+    if not referrer:
+        return "Direct / None"
+    try:
+        hostname = urlparse(referrer).hostname
+    except ValueError:
+        return "Other"
+    return hostname.lower() if hostname else "Other"

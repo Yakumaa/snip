@@ -269,7 +269,7 @@ GET /api/urls
  
 ### `GET /api/analytics/{alias}`
  
-Return aggregated daily click counts for one alias over the last 7 days. Always returns exactly 7 data points — days with no clicks are included with `"clicks": 0` so the frontend chart always has a continuous x-axis.
+Return aggregated daily click counts for one alias over the last 7 days, plus all-time breakdowns by device, browser, OS, country, and referrer. Always returns exactly 7 data points in analytics — days with no clicks are included with "clicks": 0 so the frontend chart always has a continuous x-axis.
  
 **Request**
  
@@ -293,9 +293,32 @@ GET /api/analytics/aB3xYz
     { "date": "2025-06-12", "clicks": 0 },
     { "date": "2025-06-13", "clicks": 12 },
     { "date": "2025-06-14", "clicks": 18 }
+  ],
+  "devices": [
+    { "device_type": "desktop", "clicks": 25 },
+    { "device_type": "mobile", "clicks": 15 },
+    { "device_type": "tablet", "clicks": 2 }
+  ],
+  "browsers": [
+    { "browser": "Chrome", "clicks": 20 },
+    { "browser": "Safari", "clicks": 12 }
+  ],
+  "operating_systems": [
+    { "os": "Windows", "clicks": 18 },
+    { "os": "iOS", "clicks": 10 }
+  ],
+  "countries": [
+    { "country": "United States", "country_code": "US", "clicks": 30 },
+    { "country": "United Kingdom", "country_code": "GB", "clicks": 8 }
+  ],
+  "top_referrers": [
+    { "referrer": "twitter.com", "clicks": 14 },
+    { "referrer": "Direct / None", "clicks": 10 }
   ]
 }
 ```
+
+`devices` / `browsers` / `operating_systems` are parsed from the `User-Agent` header at click time (see `backend/app/utils/user_agent.py`), using the [`user-agents`](https://pypi.org/project/user-agents/) library. `countries` are resolved via [ip-api.com](https://ip-api.com) (free, keyless, cached in Redis for 24h) — the raw client IP is only used transiently for that lookup and is never stored; only the resolved country/city persist. `top_referrers` groups by domain (e.g. all `twitter.com/...` links count together) rather than the full referrer URL.
  
 **Response `404 Not Found`**
  

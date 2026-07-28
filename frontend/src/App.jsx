@@ -1,15 +1,27 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
+import { useLocation } from "react-router-dom";
 import UrlShortener from "./components/UrlShortener";
 import AnalyticsDashboard from "./components/AnalyticsDashboard";
+import ExpiredLinkPage from "./components/ExpiredLinkPage";
 import styles from "./App.module.css";
 
 export default function App() {
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [activeTab, setActiveTab] = useState("shorten");
+  const location = useLocation();
+
+  const isExpiredRoute = useMemo(() => {
+    const params = new URLSearchParams(location.search);
+    return params.get("expired") === "1";
+  }, [location.search]);
 
   const handleSuccess = () => {
     setRefreshTrigger((n) => n + 1);
   };
+
+  if (isExpiredRoute) {
+    return <ExpiredLinkPage />;
+  }
 
   return (
     <div className={styles.root}>

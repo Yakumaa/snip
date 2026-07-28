@@ -42,10 +42,18 @@ async function request(path, options = {}) {
  * @returns {Promise<{ alias: string, short_url: string, original_url: string }>}
  * @throws {ApiError}
  */
-export async function shortenUrl(url) {
+export async function shortenUrl(url, customAlias, expiresAt) {
+  const payload = { url }
+  if (customAlias?.trim()) {
+    payload.custom_alias = customAlias.trim()
+  }
+  if (expiresAt) {
+    payload.expires_at = expiresAt
+  }
+
   return request('/api/shorten', {
     method: 'POST',
-    body: JSON.stringify({ url }),
+    body: JSON.stringify(payload),
   })
 }
 
