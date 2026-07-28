@@ -12,6 +12,7 @@ import {
 } from "chart.js";
 import { Line } from "react-chartjs-2";
 import { fetchAllUrls, fetchAnalytics } from "../services/api";
+import QrCodeBlock from "./QrCodeBlock";
 import styles from "./AnalyticsDashboard.module.css";
 
 ChartJS.register(
@@ -389,24 +390,30 @@ export default function AnalyticsDashboard({ refreshTrigger }) {
                 </button>
               </div>
 
-              {analytics && (
-                <div className={styles.statsRow}>
-                  <Stat
-                    label="Total clicks"
-                    value={analytics.total_clicks.toLocaleString()}
-                  />
-                  <Stat
-                    label="Last 7 days"
-                    value={analytics.analytics
-                      .reduce((s, d) => s + d.clicks, 0)
-                      .toLocaleString()}
-                  />
-                  <Stat
-                    label="Peak day"
-                    value={Math.max(...analytics.analytics.map((d) => d.clicks)).toLocaleString()}
-                  />
+              <div className={styles.statsAndQr}>
+                {analytics && (
+                  <div className={styles.statsRow}>
+                    <Stat
+                      label="Total clicks"
+                      value={analytics.total_clicks.toLocaleString()}
+                    />
+                    <Stat
+                      label="Last 7 days"
+                      value={analytics.analytics
+                        .reduce((s, d) => s + d.clicks, 0)
+                        .toLocaleString()}
+                    />
+                    <Stat
+                      label="Peak day"
+                      value={Math.max(...analytics.analytics.map((d) => d.clicks)).toLocaleString()}
+                    />
+                  </div>
+                )}
+
+                <div className={styles.analyticsQr}>
+                  <QrCodeBlock qrCodeUrl={selected.qr_code_url} alias={selected.alias} size={64} compact />
                 </div>
-              )}
+              </div>
 
               {chartError && (
                 <p className={styles.chartError} role="alert">

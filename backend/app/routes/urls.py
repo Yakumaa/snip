@@ -1,8 +1,9 @@
+import base64
 import hashlib
 import logging
 from datetime import datetime, timezone
 
-from flask import Blueprint, current_app, jsonify, redirect, request, render_template
+from flask import Blueprint, Response, current_app, jsonify, redirect, request, render_template
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 from app.extensions import db, redis_client
@@ -21,6 +22,7 @@ from app.utils.helpers import (
     parse_expiry,
     normalise_url,
 )
+from app.utils.qr_code import DEFAULT_BOX_SIZE, MAX_BOX_SIZE, MIN_BOX_SIZE, generate_qr_png
 from app.utils.user_agent import parse_user_agent
 
 logger = logging.getLogger(__name__)
@@ -30,6 +32,17 @@ urls_bp = Blueprint("urls", __name__)
 # Helpers
 MAX_ALIAS_RETRIES = 5  # how many random attempts before falling back to hash
 
+def _get_base_url() -> str:
+    """
+    Return the base URL to use when building self-referential links
+    (short_url, qr_code_url).
+
+    Prefers the explicit PUBLIC_BASE_URL config value when set — see
+    app/config.py for why this matters — and falls back to
+    request.host_url for backward compatibility with single-hop setups
+    that don't configure it.
+    """
+    return current_app.config.get("PUBLIC_BASE_URL") or request.host_url.rstrip("/")
 
 def _build_expired_link_redirect(alias: str):
     frontend_origin = current_app.config.get("FRONTEND_ORIGIN", request.host_url.rstrip("/"))
@@ -154,12 +167,13 @@ def shorten_url():
         logger.exception("Database error while shortening URL: %s", exc)
         return jsonify({"error": "A database error occurred. Please try again."}), 500
 
-    base_url = request.host_url.rstrip("/")
+    base_url = _get_base_url()
     return jsonify({
         "alias": alias,
         "short_url": f"{base_url}/{alias}",
         "original_url": original_url,
         "expires_at": expires_at.isoformat() if expires_at else None,
+        "qr_code_url": f"{base_url}/api/urls/{alias}/qr?format=png",
     }), 201
 
 # GET /go/<alias>  — redirect + click tracking
@@ -242,6 +256,69 @@ def preview_alias(alias: str):
         frontend_origin=current_app.config["FRONTEND_ORIGIN"],
     )
 
+# GET /api/urls/<alias>/qr  — QR code for the short link
+@urls_bp.route("/api/urls/<string:alias>/qr", methods=["GET"])
+def get_qr_code(alias: str):
+    """
+    Generate a QR code that encodes this alias's short URL — scanning it
+    with a phone camera goes straight to the same place the short link does.
+
+    Query params:
+        size      Optional box_size — pixels per QR "module" — clamped to [1, 40]. Default 10. Controls overall image size/resolution, not information density (that's fixed by the URL length).
+        format    "json" (default) — { "qr_code": "data:image/png;base64,..." }, a data: URI, handy for embedding directly or downloading without a second request.
+                  "png"  — raw image/png bytes. This is what "qr_code_url" (returned by /api/shorten and /api/urls) points at, so it can be used directly as an <img src=...> with no JS-side base64 decoding needed.
+        download  Only applies when format=png. If truthy ("1"/"true"), sets Content-Disposition: attachment so a plain <a href=... download> link forces a save-as even when the frontend andbackend are on different origins (the HTML `download` attribute alone is unreliable cross-origin without this).
+
+    Responses:
+        200  JSON body (format=json) or raw PNG (format=png)
+        400  { "error": "..." }               — 'size' isn't a valid integer
+        404  { "error": "Alias '...' not found." }
+        500  { "error": "..." }               — QR generation failed unexpectedly
+    """
+    entry = ShortenedUrl.query.filter_by(alias=alias).first()
+    if entry is None:
+        return jsonify({"error": f"Alias '{alias}' not found."}), 404
+
+    raw_size = request.args.get("size", "").strip()
+    size = DEFAULT_BOX_SIZE
+    if raw_size:
+        try:
+            size = int(raw_size)
+        except ValueError:
+            return jsonify({
+                "error": f"'size' must be an integer between {MIN_BOX_SIZE} and {MAX_BOX_SIZE}."
+            }), 400
+
+    fmt = request.args.get("format", "json").strip().lower()
+    short_url = f"{_get_base_url()}/{alias}"
+
+    try:
+        png_bytes = generate_qr_png(short_url, box_size=size)
+    except Exception as exc:
+        # qrcode/Pillow are well-behaved for any string input, but a QR code is a nice-to-have, not core redirect functionality — if generation ever does misbehave, fail with a clean 500 rather than letting whatever the underlying library raised bubble up.
+        logger.exception("QR code generation failed for alias '%s': %s", alias, exc)
+        return jsonify({"error": "Failed to generate QR code. Please try again."}), 500
+
+    if fmt == "png":
+        response = Response(png_bytes, mimetype="image/png")
+        # The QR content is just this alias's short URL, which never changes after creation, so this is safe to cache aggressively — unlike click data, there's no "freshness" concept here.
+        response.headers["Cache-Control"] = "public, max-age=86400, immutable"
+
+        wants_download = request.args.get("download", "").strip().lower() in ("1", "true", "yes")
+        if wants_download:
+            response.headers["Content-Disposition"] = f'attachment; filename="snip-{alias}-qr.png"'
+
+        return response
+
+    is_expired = bool(entry.expires_at and entry.expires_at < datetime.now(timezone.utc))
+    encoded = base64.b64encode(png_bytes).decode()
+    return jsonify({
+        "alias": alias,
+        "short_url": short_url,
+        "qr_code": f"data:image/png;base64,{encoded}",
+        "is_expired": is_expired,
+    }), 200
+
 # GET /api/health  — lightweight liveness probe
 @urls_bp.route("/api/health", methods=["GET"])
 def health_check():
@@ -286,13 +363,14 @@ def list_urls():
         logger.exception("Failed to list URLs: %s", exc)
         return jsonify({"error": "Database error. Please try again."}), 500
  
-    base_url = request.host_url.rstrip("/")
+    base_url = _get_base_url()
  
     return jsonify({
         "urls": [
             {
                 **entry.to_dict(),
                 "short_url": f"{base_url}/{entry.alias}",
+                "qr_code_url": f"{base_url}/api/urls/{entry.alias}/qr?format=png",
             }
             for entry in entries
         ]
@@ -453,7 +531,7 @@ def get_analytics(alias: str):
     return jsonify({
         "alias": alias,
         "original_url": entry.original_url,
-        "short_url": f"{request.host_url.rstrip('/')}/{alias}",
+        "short_url": f"{_get_base_url()}/{alias}",
         "total_clicks": entry.to_dict()["total_clicks"],
         "analytics": analytics,
         "devices": [{"device_type": r.device_type, "clicks": r.count} for r in device_rows],

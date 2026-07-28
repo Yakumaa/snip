@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { shortenUrl, ApiError } from '../services/api'
 import { useCountdown } from '../hooks/useCountdown'
+import QrCodeBlock from './QrCodeBlock'
 import styles from './UrlShortener.module.css'
 
 function CopyButton({ text }) {
@@ -45,40 +46,46 @@ function ResultCard({ result }) {
 
   return (
     <div className={styles.resultCard} role="status" aria-live="polite">
-      <div className={styles.resultHeader}>
-        <div className={styles.resultStatus}>
-          <span className={styles.successDot} aria-hidden="true" />
-          <span className={styles.resultLabel}>Link ready</span>
+      <div className={styles.resultMain}>
+        <div className={styles.resultHeader}>
+          <div className={styles.resultStatus}>
+            <span className={styles.successDot} aria-hidden="true" />
+            <span className={styles.resultLabel}>Link ready</span>
+          </div>
         </div>
-      </div>
 
-      {/* Signature element: the glowing alias pill */}
-      <div className={styles.aliasPill}>
-        <span className={styles.aliasBase}>Alias: /</span>
-        <span className={styles.aliasCode}>{result.alias}</span>
-      </div>
-
-      <div className={styles.resultActions}>
-        <a
-          href={result.short_url}
-          target="_blank"
-          rel="noopener noreferrer"
-          className={styles.shortUrl}
-        >
-          {result.short_url}
-        </a>
-        <CopyButton text={result.short_url} />
-      </div>
-
-      <p className={styles.originalUrl} title={result.original_url}>
-        ↳ {result.original_url}
-      </p>
-
-      {formattedExpiry && (
-        <div className={styles.expiryPill} title={`Expires ${formattedExpiry}`}>
-          <ClockIcon aria-hidden="true" /> Expires {formattedExpiry}
+        {/* Signature element: the glowing alias pill */}
+        <div className={styles.aliasPill}>
+          <span className={styles.aliasBase}>Alias: /</span>
+          <span className={styles.aliasCode}>{result.alias}</span>
         </div>
-      )}
+
+        <div className={styles.resultActions}>
+          <a
+            href={result.short_url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={styles.shortUrl}
+          >
+            {result.short_url}
+          </a>
+          <CopyButton text={result.short_url} />
+        </div>
+
+        <p className={styles.originalUrl} title={result.original_url}>
+          ↳ {result.original_url}
+        </p>
+
+        {formattedExpiry && (
+          <div className={styles.expiryPill} title={`Expires ${formattedExpiry}`}>
+            <ClockIcon aria-hidden="true" /> Expires {formattedExpiry}
+          </div>
+        )}
+      </div>
+
+      <div className={styles.resultQr}>
+        <QrCodeBlock qrCodeUrl={result.qr_code_url} alias={result.alias} size={200} />
+      </div>
     </div>
   )
 }
