@@ -50,6 +50,9 @@ _missing_key_warned = False
 def _get_api_key() -> Optional[str]:
     return os.environ.get("SAFE_BROWSING_API_KEY", "").strip() or None
 
+def _redact_url(url: str) -> str:
+    return "<redacted-url>"
+
 def check_url_safety(url: str) -> Tuple[bool, Optional[str]]:
     """
     Check *url* against Google Safe Browsing.
@@ -101,18 +104,36 @@ def check_url_safety(url: str) -> Tuple[bool, Optional[str]]:
         # Covers timeouts, connection errors, 4xx/5xx responses (e.g. quota
         # exceeded, bad key, Google having an outage). Fail open — see
         # module docstring for why.
-        logger.error("Safe Browsing lookup failed for %s — failing open: %s", url, exc)
+        logger.error(
+            "Safe Browsing lookup failed for %s — failing open: %s",
+            _redact_url(url),
+            "<redacted-error>",
+        )
         return True, None
 
     try:
-        matches = response.json().get("matches", [])
+        payload_json = response.json()
     except ValueError:
         logger.error("Safe Browsing returned a non-JSON response — failing open")
+        return True, None
+
+    if not isinstance(payload_json, dict):
+        logger.warning("Safe Browsing returned an invalid response shape — failing open")
+        return True, None
+
+    matches = payload_json.get("matches", [])
+    if not isinstance(matches, list):
+        logger.warning("Safe Browsing returned an invalid matches payload — failing open")
         return True, None
 
     if not matches:
         return True, None
 
-    threat_type = matches[0].get("threatType", "UNKNOWN")
-    logger.warning("Safe Browsing flagged URL as %s: %s", threat_type, url)
+    first_match = matches[0]
+    if not isinstance(first_match, dict):
+        logger.warning("Safe Browsing returned a malformed match entry — failing open")
+        return True, None
+
+    threat_type = first_match.get("threatType", "UNKNOWN")
+    logger.warning("Safe Browsing flagged URL as %s: %s", threat_type, _redact_url(url))
     return False, threat_type

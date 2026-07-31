@@ -6,10 +6,11 @@ check_ssrf_safety's DNS-based tests require real internet/DNS access (to resolve
 Run with:  python tests_url_validation.py
 """
 import sys
+from unittest.mock import patch
 
 sys.path.insert(0, ".")
 
-from app.utils.helpers import MAX_URL_LENGTH, check_ssrf_safety, is_valid_url
+from app.utils.helpers import MAX_URL_LENGTH, _resolve_hostname, check_ssrf_safety, is_valid_url
 
 # is_valid_url — syntactic checks
 def test_valid_public_urls_pass():
@@ -26,6 +27,14 @@ def test_empty_and_non_string_rejected():
     assert not is_valid_url(None)
     assert not is_valid_url("   ")
     print("PASS  empty_and_non_string_rejected")
+
+def test_normalise_url_preserves_existing_http_https_scheme_case_insensitively():
+    from app.utils.helpers import normalise_url
+
+    assert normalise_url("HTTP://Example.com") == "HTTP://Example.com"
+    assert normalise_url("hTTpS://Example.com") == "hTTpS://Example.com"
+    assert normalise_url("example.com") == "https://example.com"
+    print("PASS  normalise_url_preserves_existing_http_https_scheme_case_insensitively")
 
 def test_non_http_schemes_rejected():
     for url in ["javascript:alert(1)", "ftp://example.com/file", "file:///etc/passwd", "data:text/html,hi"]:
@@ -87,8 +96,27 @@ def test_public_hostname_allowed():
 
 def test_nonresolving_hostname_fails_open():
     is_safe, reason = check_ssrf_safety("https://this-domain-should-never-exist-abc123xyz.com")
-    assert is_safe, "A hostname that doesn't resolve should fail open (nothing to check)"
-    print("PASS  nonresolving_hostname_fails_open")
+    assert not is_safe, "A hostname that doesn't resolve should be rejected"
+    assert "could not be resolved" in reason
+    print(f"PASS  nonresolving_hostname_rejected  ({reason})")
+
+def test_resolve_hostname_restores_previous_timeout():
+    calls = []
+
+    def fake_setdefaulttimeout(value):
+        calls.append(value)
+
+    def fake_getaddrinfo(hostname, port):
+        return [(None, None, None, None, ("93.184.216.34", 0))]
+
+    with patch("app.utils.helpers.socket.setdefaulttimeout", side_effect=fake_setdefaulttimeout), \
+         patch("app.utils.helpers.socket.getaddrinfo", side_effect=fake_getaddrinfo), \
+         patch("app.utils.helpers.socket.getdefaulttimeout", return_value=10):
+        result = _resolve_hostname("example.com")
+
+    assert result == ["93.184.216.34"]
+    assert calls == [2, 10]
+    print("PASS  resolve_hostname_restores_previous_timeout")
 
 def test_wildcard_dns_bypass_is_caught():
     """
@@ -103,6 +131,7 @@ if __name__ == "__main__":
     tests = [
         test_valid_public_urls_pass,
         test_empty_and_non_string_rejected,
+        test_normalise_url_preserves_existing_http_https_scheme_case_insensitively,
         test_non_http_schemes_rejected,
         test_embedded_credentials_rejected,
         test_max_length_enforced,
@@ -111,6 +140,7 @@ if __name__ == "__main__":
         test_blocked_hostnames,
         test_public_hostname_allowed,
         test_nonresolving_hostname_fails_open,
+        test_resolve_hostname_restores_previous_timeout,
         test_wildcard_dns_bypass_is_caught,
     ]
     for t in tests:

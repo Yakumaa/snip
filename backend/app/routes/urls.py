@@ -107,7 +107,11 @@ def shorten_url():
     # SSRF / private-network check — reject destinations that resolve to localhost, RFC 1918 private ranges, link-local (incl. cloud metadata endpoints), or other internal-only addresses. Runs before the Safe Browsing call so we don't waste a quota'd external API call, and don't send an internal-looking address to a third party, on a URL we're going to reject anyway.
     is_safe_destination, ssrf_reason = check_ssrf_safety(original_url)
     if not is_safe_destination:
-        logger.warning("Blocked private/internal URL submission: %s (%s)", original_url, ssrf_reason)
+        logger.warning(
+            "Blocked private/internal URL submission for %s (%s)",
+            "<redacted-url>",
+            ssrf_reason,
+        )
         return jsonify({
             "error": f"This URL cannot be shortened: {ssrf_reason}"
         }), 400

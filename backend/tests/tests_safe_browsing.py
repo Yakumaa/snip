@@ -11,6 +11,7 @@ run in any environment.
 
 Run with:  python tests_safe_browsing.py
 """
+import logging
 import os
 import sys
 from unittest.mock import MagicMock, patch
@@ -102,6 +103,64 @@ def test_malformed_json_response_fails_open():
         assert threat_type is None
     print("PASS  malformed_json_response_fails_open")
 
+def test_invalid_top_level_response_shape_fails_open():
+    with patch("app.services.safe_browsing.requests.post") as mock_post:
+        resp = MagicMock()
+        resp.raise_for_status.return_value = None
+        resp.json.return_value = []
+        mock_post.return_value = resp
+        is_safe, threat_type = safe_browsing.check_url_safety("https://example.com")
+        assert is_safe is True
+        assert threat_type is None
+    print("PASS  invalid_top_level_response_shape_fails_open")
+
+def test_invalid_matches_payload_fails_open():
+    with patch("app.services.safe_browsing.requests.post") as mock_post:
+        resp = MagicMock()
+        resp.raise_for_status.return_value = None
+        resp.json.return_value = {"matches": None}
+        mock_post.return_value = resp
+        is_safe, threat_type = safe_browsing.check_url_safety("https://example.com")
+        assert is_safe is True
+        assert threat_type is None
+    print("PASS  invalid_matches_payload_fails_open")
+
+def test_malformed_match_entry_fails_open():
+    with patch("app.services.safe_browsing.requests.post") as mock_post:
+        resp = MagicMock()
+        resp.raise_for_status.return_value = None
+        resp.json.return_value = {"matches": ["not-a-dict"]}
+        mock_post.return_value = resp
+        is_safe, threat_type = safe_browsing.check_url_safety("https://example.com")
+        assert is_safe is True
+        assert threat_type is None
+    print("PASS  malformed_match_entry_fails_open")
+
+def test_logging_redacts_sensitive_url_details():
+    logs = []
+    handler = logging.Handler()
+    handler.emit = lambda record: logs.append(record.getMessage())
+
+    logger = logging.getLogger("app.services.safe_browsing")
+    logger.addHandler(handler)
+    logger.setLevel(logging.ERROR)
+
+    try:
+        with patch("app.services.safe_browsing.requests.post") as mock_post:
+            mock_post.side_effect = requests.exceptions.Timeout(
+                "simulated timeout for https://example.com/path?token=secret"
+            )
+            safe_browsing.check_url_safety("https://example.com/path?token=secret")
+    finally:
+        logger.removeHandler(handler)
+
+    log_output = "\n".join(logs)
+    assert "https://example.com/path?token=secret" not in log_output
+    assert "https://example.com" not in log_output
+    assert "simulated timeout" not in log_output
+    assert "redacted" in log_output.lower()
+    print("PASS  logging_redacts_sensitive_url_details")
+
 def test_no_api_key_fails_open():
     """
     Isolated from the module-level env var set above — temporarily clears
@@ -165,6 +224,10 @@ if __name__ == "__main__":
         test_connection_error_fails_open,
         test_http_error_fails_open,
         test_malformed_json_response_fails_open,
+        test_invalid_top_level_response_shape_fails_open,
+        test_invalid_matches_payload_fails_open,
+        test_malformed_match_entry_fails_open,
+        test_logging_redacts_sensitive_url_details,
         test_no_api_key_fails_open,
         test_request_payload_shape,
         test_live_against_real_google_api,

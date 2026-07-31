@@ -80,9 +80,9 @@ def is_valid_url(url: str) -> bool:
 def normalise_url(url: str) -> str:
     """Ensure the URL has an explicit https:// scheme."""
     url = url.strip()
-    if not url.startswith(("http://", "https://")):
-        return f"https://{url}"
-    return url
+    if re.match(r"^https?://", url, re.IGNORECASE):
+        return url
+    return f"https://{url}"
 
 # SSRF / private-network hardening
 #
@@ -115,13 +115,14 @@ def _resolve_hostname(hostname: str) -> list[str]:
 
     Returns an empty list on any resolution failure (NXDOMAIN, timeout, etc.) — callers should treat "couldn't resolve" as "nothing to check," not as a security signal, since a non-resolving hostname isn't a real destination anyone can be routed to.
     """
+    previous_timeout = socket.getdefaulttimeout()
     try:
         socket.setdefaulttimeout(_DNS_TIMEOUT_SECONDS)
         infos = socket.getaddrinfo(hostname, None)
     except (socket.gaierror, socket.timeout, UnicodeError, OSError):
         return []
     finally:
-        socket.setdefaulttimeout(None)
+        socket.setdefaulttimeout(previous_timeout)
 
     return list({info[4][0] for info in infos})  # dedupe
 
@@ -168,7 +169,7 @@ def check_ssrf_safety(url: str) -> Tuple[bool, Optional[str]]:
     # Ordinary hostname — resolve it and check every address it points to.
     resolved_ips = _resolve_hostname(hostname)
     if not resolved_ips:
-        return True, None  # couldn't resolve — see docstring
+        return False, f"URL's hostname could not be resolved."  # Reject on resolution failure
 
     for ip_str in resolved_ips:
         try:

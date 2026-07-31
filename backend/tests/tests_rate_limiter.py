@@ -6,6 +6,8 @@ Requires a running Redis instance (set REDIS_URL, defaults to redis://localhost:
 Run with:  python tests_rate_limiter.py
 """
 import sys
+from unittest.mock import patch
+import uuid
 sys.path.insert(0, ".")
 
 from app.middleware.rate_limiter import _check_rate_limit
@@ -14,7 +16,8 @@ from app.extensions import redis_client
 LIMIT = 5
 WINDOW = 60  # seconds
 
-TEST_IP_PREFIX = "test-suite-ip"  # keeps test keys clearly namespaced
+# Generate a unique UUID for this test process
+TEST_IP_PREFIX = f"test-suite-ip-{uuid.uuid4().hex}"
 
 def reset(ip: str):
     """Delete this test's rate-limit key so each test starts clean."""
