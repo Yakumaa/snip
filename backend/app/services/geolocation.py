@@ -83,12 +83,12 @@ def get_geolocation(ip: str, ip_hash: str, redis_client=None) -> dict:
         data = response.json()
     except requests.exceptions.RequestException as exc:
         logger.warning("Geolocation lookup failed — failing open: %s", exc)
-        # Cache the failure too, but only briefly. Without this, an extended API outage would re-attempt (and time out) the lookup on every single click — adding EO_TIMEOUT_SECONDS of latency to every redirect for as long as the outage lasts. A short TTL here means we retry periodically (in case the outage clears)# without paying that cost on every request in the meantime.
+        # Cache the failure too, but only briefly. Without this, an extended API outage would re-attempt (and time out) the lookup on every single click — adding GEO_TIMEOUT_SECONDS of latency to every redirect for as long as the outage lasts. A short TTL here means we retry periodically (in case the outage clears) without paying that cost on every request in the meantime.
         if redis_client is not None:
             try:
                 redis_client.set(cache_key, json.dumps(_EMPTY_RESULT), ex=FAILURE_CACHE_TTL_SECONDS)
-            except Exception:
-                pass
+            except Exception as cache_exc:
+                logger.debug("Geo negative-cache write failed — continuing without cache: %s", cache_exc)
         return dict(_EMPTY_RESULT)
     except ValueError:
         logger.warning("Geolocation API returned a non-JSON response — failing open")

@@ -252,7 +252,7 @@ export default function UrlShortener({ onSuccess }) {
                 className={styles.expiryInput}
                 value={expiresAt}
                 onChange={(e) => setExpiresAt(e.target.value)}
-                min={new Date().toISOString().slice(0, 16)}
+                min={new Date(new Date().getTime() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16)}
                 disabled={isRateLimited || loading}
               />
             </div>

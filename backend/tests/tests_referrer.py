@@ -48,7 +48,6 @@ def test_extract_domain_missing_referrer_is_direct():
 
 def test_extract_domain_unparseable_is_other():
     # Not a URL at all — shouldn't raise, should bucket as "Other" rather than crash the analytics endpoint over a malformed Referer header.
-    assert extract_referrer_domain("not a url at all") in ("Other", "not a url at all", None) or True
     # urlparse is very tolerant, so assert it never raises instead of pinning an exact bucket for this input.
     result = extract_referrer_domain("not a url at all")
     assert isinstance(result, str)

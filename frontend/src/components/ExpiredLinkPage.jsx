@@ -15,7 +15,7 @@ export default function ExpiredLinkPage() {
         <div className={styles.eyebrow}>⚠ Link expired</div>
         <h1>This short link is no longer available.</h1>
         <p>
-          The link you tried to open, has expired and can no longer be redirected.
+          The link you tried to open has expired and can no longer be redirected.
         </p>
         <div className={styles.actions}>
           <button type="button" className={styles.primaryBtn} onClick={() => navigate('/')}>

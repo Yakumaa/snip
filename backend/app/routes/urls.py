@@ -195,8 +195,8 @@ def redirect_alias(alias: str):
         return _build_expired_link_redirect(alias)
     
     try:
-        ip = request.headers.get("X-Forwarded-For", request.remote_addr or "")
-        client_ip = ip.split(",")[0].strip()
+        # Use request.remote_addr directly — trusting X-Forwarded-For without validating the proxy chain (e.g. with Werkzeug ProxyFix configured for the correct hop count) is a security risk since clients can forge that header. If the app is deployed behind a reverse proxy, configure ProxyFix in app/extensions.py so request.remote_addr reflects the real client IP after WSGI middleware has validated the forwarded-header chain.
+        client_ip = request.remote_addr or ""
         ip_hash = _hash_ip(client_ip) if client_ip else None
 
         ua_fields = parse_user_agent(request.headers.get("User-Agent"))
@@ -233,13 +233,13 @@ def redirect_alias(alias: str):
 @urls_bp.route("/<string:alias>", methods=["GET"])
 def preview_alias(alias: str):
     """
-    Look up *alias* and return its destination WITHOUT redirecting or recording a click.
+    Look up *alias* and render a preview page (preview.html) with the alias, destination, expiry, and frontend origin — WITHOUT redirecting or recording a click.
     Lets the frontend render a "you're about to visit X" confirmation page.
 
     Responses:
-        200  { "alias": "...", "original_url": "...", "expires_at": "..." | null }
-        404  { "error": "Alias not found." }
-        410  { "error": "This link has expired." }
+        200  Renders preview.html with alias, original_url, expires_at, and frontend_origin template variables.
+        404  { "error": "Alias not found." }  (JSON)
+        302  Redirect to frontend expired-link route (when link has expired).
     """
     entry = ShortenedUrl.query.filter_by(alias=alias).first()
     if entry is None:
@@ -510,6 +510,7 @@ def get_analytics(alias: str):
                 JOIN shortened_urls su ON su.id = c.shortened_url_id
                 WHERE su.alias = :alias
                 GROUP BY referrer
+                LIMIT 1000
             """),
             {"alias": alias},
         ).fetchall()
@@ -528,11 +529,14 @@ def get_analytics(alias: str):
         reverse=True,
     )[:10]
 
+    # Derive total_clicks from device_rows — sum of all device counts includes unknown types, matching the count entry.to_dict() would compute, but without materializing every click row.
+    total_clicks = sum(r.count for r in device_rows)
+
     return jsonify({
         "alias": alias,
         "original_url": entry.original_url,
         "short_url": f"{_get_base_url()}/{alias}",
-        "total_clicks": entry.to_dict()["total_clicks"],
+        "total_clicks": total_clicks,
         "analytics": analytics,
         "devices": [{"device_type": r.device_type, "clicks": r.count} for r in device_rows],
         "browsers": [{"browser": r.browser, "clicks": r.count} for r in browser_rows],
