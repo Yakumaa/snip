@@ -40,10 +40,10 @@
   line-height: 1.6;
 }
 
-.alias {
+/* .alias {
   color: var(--color-text);
   font-family: var(--font-mono);
-}
+} */
 
 .actions {
   margin-top: var(--space-6);
@@ -52,8 +52,7 @@
   flex-wrap: wrap;
 }
 
-.primaryBtn,
-.secondaryLink {
+.primaryBtn {
   display: inline-flex;
   align-items: center;
   justify-content: center;

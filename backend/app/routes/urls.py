@@ -514,6 +514,8 @@ def get_analytics(alias: str):
                 JOIN shortened_urls su ON su.id = c.shortened_url_id
                 WHERE su.alias = :alias
                 GROUP BY referrer
+                ORDER BY count DESC, referrer
+                LIMIT 100
             """),
             {"alias": alias},
         ).fetchall()
