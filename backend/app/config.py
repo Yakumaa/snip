@@ -27,3 +27,12 @@ class Config:
 
     PUBLIC_BASE_URL = os.environ.get("PUBLIC_BASE_URL", "").rstrip("/")
 
+    # API docs (flask-smorest / OpenAPI)
+    API_TITLE = "Snip API"
+    API_VERSION = "v1"
+    OPENAPI_VERSION = "3.0.3"
+    OPENAPI_URL_PREFIX = "/api/docs"
+    OPENAPI_SWAGGER_UI_PATH = "/"
+    OPENAPI_SWAGGER_UI_URL = "https://cdn.jsdelivr.net/npm/swagger-ui-dist/"
+    OPENAPI_REDOC_PATH = "/redoc"
+    OPENAPI_REDOC_URL = "https://cdn.jsdelivr.net/npm/redoc@next/bundles/redoc.standalone.js"

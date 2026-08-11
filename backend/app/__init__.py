@@ -2,6 +2,7 @@ import logging
 
 from flask import Flask
 from flask_cors import CORS
+from flask_smorest import Api
 
 from app.config import Config
 from app.extensions import db, migrate
@@ -27,9 +28,14 @@ def create_app(config_class=Config):
     # Models 
     from app.models import url
 
+    api = Api(app)
+
+    from app.schemas import ErrorSchema
+    api.spec.components.schema("SnipError", schema=ErrorSchema)
+
     # Blueprints
     from app.routes.urls import urls_bp
-    app.register_blueprint(urls_bp)
+    api.register_blueprint(urls_bp)
 
     logger.info("App created — DB: %s", app.config.get("SQLALCHEMY_DATABASE_URI", "n/a"))
     return app

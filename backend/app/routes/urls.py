@@ -3,7 +3,8 @@ import hashlib
 import logging
 from datetime import datetime, timezone
 
-from flask import Blueprint, Response, current_app, jsonify, redirect, request, render_template
+from flask import Response, current_app, jsonify, redirect, request, render_template
+from flask_smorest import Blueprint
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 from app.extensions import db, redis_client
@@ -11,6 +12,14 @@ from app.middleware.rate_limiter import rate_limit
 from app.models.url import Click, ShortenedUrl
 from app.services.safe_browsing import check_url_safety
 from app.services.geolocation import get_geolocation
+from app.schemas import (
+    AnalyticsResponseSchema,
+    HealthResponseSchema,
+    QRJsonResponseSchema,
+    RateLimitedResponseSchema,
+    ShortenResponseSchema,
+    UrlListResponseSchema,
+)
 from app.utils.helpers import (
     check_ssrf_safety,
     extract_referrer_domain,
@@ -27,7 +36,13 @@ from app.utils.user_agent import parse_user_agent
 
 logger = logging.getLogger(__name__)
 
-urls_bp = Blueprint("urls", __name__)
+# flask_smorest.Blueprint is a drop-in subclass of flask.Blueprint — every existing @urls_bp.route(...) call below still works exactly as before. `description` shows up as the tag description in Swagger UI.
+urls_bp = Blueprint(
+    "urls",
+    __name__,
+    description="Shorten URLs, redirect through them, and read back analytics.",
+)
+
 
 # Helpers
 MAX_ALIAS_RETRIES = 5  # how many random attempts before falling back to hash
@@ -71,6 +86,46 @@ def _hash_ip(ip: str) -> str:
 
 # POST /api/shorten
 @urls_bp.route("/api/shorten", methods=["POST"])
+@urls_bp.doc(
+    summary="Shorten a URL",
+    description=(
+        "Validates, SSRF-checks, and Safe-Browsing-checks a URL, then stores it "
+        "under a random or custom alias. Rate limited to 5 requests / 60s per IP."
+    ),
+    requestBody={
+        "required": True,
+        "content": {
+            "application/json": {
+                "schema": {
+                    "type": "object",
+                    "required": ["url"],
+                    "properties": {
+                        "url": {
+                            "type": "string",
+                            "example": "https://www.example.com/some/very/long/path?with=query&params=true",
+                            "description": "The long URL to shorten.",
+                        },
+                        "custom_alias": {
+                            "type": "string",
+                            "example": "000000",
+                            "description": "Optional. Use this exact alias instead of generating one.",
+                        },
+                        "expires_at": {
+                            "type": "string",
+                            "example": "2026-12-31T00:00:00Z",
+                            "description": "Optional ISO-8601 expiry timestamp.",
+                        },
+                    },
+                }
+            }
+        },
+    },
+)
+@urls_bp.response(201, ShortenResponseSchema, description="URL shortened successfully.")
+@urls_bp.alt_response(400, schema="SnipError", description="Invalid/unsafe URL, bad alias, or bad expiry.")
+@urls_bp.alt_response(409, schema="SnipError", description="Alias already taken or collided — retry.")
+@urls_bp.alt_response(429, schema=RateLimitedResponseSchema, description="Rate limit exceeded.")
+@urls_bp.alt_response(500, schema="SnipError", description="Unexpected server error.")
 @rate_limit  
 def shorten_url():
     """
@@ -182,6 +237,12 @@ def shorten_url():
 
 # GET /go/<alias>  — redirect + click tracking
 @urls_bp.route("/go/<string:alias>", methods=["GET"])
+@urls_bp.doc(
+    summary="Redirect through a short link",
+    description="Records a click (referrer, UA, geo) and issues a 302 to the original URL.",
+)
+@urls_bp.alt_response(302, description="Redirect to the original URL.")
+@urls_bp.alt_response(404, schema="SnipError", description="Alias not found.")
 def redirect_alias(alias: str):
     """
     Look up *alias*, record a click, and redirect to the original URL.
@@ -235,15 +296,22 @@ def redirect_alias(alias: str):
 
 # GET /<alias> — preview page shown before the real redirect
 @urls_bp.route("/<string:alias>", methods=["GET"])
+@urls_bp.doc(
+    summary="Preview a short link",
+    description="Renders an HTML confirmation page for the destination — does NOT redirect or record a click.",
+)
+@urls_bp.alt_response(200, content_type="text/html", description="Rendered preview.html page.")
+@urls_bp.alt_response(302, description="Redirect to the frontend's expired-link page (link has expired).")
+@urls_bp.alt_response(404, schema="SnipError", description="Alias not found.")
 def preview_alias(alias: str):
     """
-    Look up *alias* and return its destination WITHOUT redirecting or recording a click.
+    Look up *alias* and render a preview page (preview.html) with the alias, destination, expiry, and frontend origin — WITHOUT redirecting or recording a click.
     Lets the frontend render a "you're about to visit X" confirmation page.
 
     Responses:
-        200  { "alias": "...", "original_url": "...", "expires_at": "..." | null }
-        404  { "error": "Alias not found." }
-        410  { "error": "This link has expired." }
+        200  Renders preview.html with alias, original_url, expires_at, and frontend_origin template variables.
+        404  { "error": "Alias not found." }  (JSON)
+        302  Redirect to frontend expired-link route (when link has expired).
     """
     entry = ShortenedUrl.query.filter_by(alias=alias).first()
     if entry is None:
@@ -262,6 +330,38 @@ def preview_alias(alias: str):
 
 # GET /api/urls/<alias>/qr  — QR code for the short link
 @urls_bp.route("/api/urls/<string:alias>/qr", methods=["GET"])
+@urls_bp.doc(
+    summary="Get a QR code for a short link",
+    description="Generates (or in 'png' format, streams) a QR code that resolves to this alias's short URL.",
+    parameters=[
+        {
+            "name": "size",
+            "in": "query",
+            "required": False,
+            "schema": {"type": "integer", "minimum": MIN_BOX_SIZE, "maximum": MAX_BOX_SIZE, "default": DEFAULT_BOX_SIZE},
+            "description": "Pixels per QR module — controls image resolution, not information density.",
+        },
+        {
+            "name": "format",
+            "in": "query",
+            "required": False,
+            "schema": {"type": "string", "enum": ["json", "png"], "default": "json"},
+            "description": "'json' returns a base64 data URI; 'png' streams raw image bytes.",
+        },
+        {
+            "name": "download",
+            "in": "query",
+            "required": False,
+            "schema": {"type": "boolean", "default": False},
+            "description": "Only applies when format=png. Forces Content-Disposition: attachment.",
+        },
+    ],
+)
+@urls_bp.response(200, QRJsonResponseSchema, description="QR code as a base64 data URI (format=json, the default).")
+@urls_bp.alt_response(200, content_type="image/png", description="Raw QR code PNG bytes (format=png).")
+@urls_bp.alt_response(400, schema="SnipError", description="'size' isn't a valid integer.")
+@urls_bp.alt_response(404, schema="SnipError", description="Alias not found.")
+@urls_bp.alt_response(500, schema="SnipError", description="QR generation failed unexpectedly.")
 def get_qr_code(alias: str):
     """
     Generate a QR code that encodes this alias's short URL — scanning it
@@ -325,6 +425,9 @@ def get_qr_code(alias: str):
 
 # GET /api/health  — lightweight liveness probe
 @urls_bp.route("/api/health", methods=["GET"])
+@urls_bp.doc(summary="Liveness probe", description="Used by Docker health checks and uptime monitors.")
+@urls_bp.response(200, HealthResponseSchema, description="Service (and DB) are healthy.")
+@urls_bp.alt_response(503, schema=HealthResponseSchema, description="Database is unreachable.")
 def health_check():
     """Simple liveness endpoint for Docker health checks and uptime monitors."""
     try:
@@ -338,6 +441,9 @@ def health_check():
 
 # GET /api/urls  — list every shortened URL
 @urls_bp.route("/api/urls", methods=["GET"])
+@urls_bp.doc(summary="List all shortened URLs", description="Returns every shortened URL, newest first.")
+@urls_bp.response(200, UrlListResponseSchema)
+@urls_bp.alt_response(500, schema="SnipError", description="Database error.")
 def list_urls():
     """
     Return all shortened URLs ordered newest-first.
@@ -383,6 +489,16 @@ def list_urls():
  
 # GET /api/analytics/<alias>  — 7-day daily click counts for one alias
 @urls_bp.route("/api/analytics/<string:alias>", methods=["GET"])
+@urls_bp.doc(
+    summary="Get analytics for a short link",
+    description=(
+        "Returns 7-day daily click counts plus all-time device/browser/OS/country/referrer "
+        "breakdowns for one alias."
+    ),
+)
+@urls_bp.response(200, AnalyticsResponseSchema)
+@urls_bp.alt_response(404, schema="SnipError", description="Alias not found.")
+@urls_bp.alt_response(500, schema="SnipError", description="Database error.")
 def get_analytics(alias: str):
     """
     Return daily click counts for *alias* over the last 7 days.
@@ -551,6 +667,10 @@ def get_analytics(alias: str):
     }), 200
  
 @urls_bp.route("/api/debug/rate-limit", methods=["GET"])
+@urls_bp.doc(
+    summary="[DEV ONLY] Inspect the rate-limit store",
+    description="Shows the current in-memory rate-limit store and the IP Flask sees. Remove before deploying to production.",
+)
 def debug_rate_limit():
     """
     DEV ONLY — shows the current in-memory rate-limit store and the IP
