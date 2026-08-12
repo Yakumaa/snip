@@ -63,9 +63,7 @@ export async function shortenUrl(url, customAlias, expiresAt) {
  * @throws {ApiError}
  */
 export async function fetchAllUrls() {
-  const res = await fetch('/api/urls');
-  const data = await res.json();
-  if (!res.ok) throw new ApiError(res.status, data.error ?? "Failed to load URLs.", data);
+  const data = await request('/api/urls')
   return data.urls;
 }
 
@@ -76,8 +74,5 @@ export async function fetchAllUrls() {
  * @throws {ApiError}
  */
 export async function fetchAnalytics(alias) {
-  const res = await fetch(`/api/analytics/${encodeURIComponent(alias)}`);
-  const data = await res.json();
-  if (!res.ok) throw new ApiError(res.status, data.error ?? "Failed to load analytics.", data);
-  return data;
+  return request(`/api/analytics/${encodeURIComponent(alias)}`)
 }
