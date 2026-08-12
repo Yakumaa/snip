@@ -6,16 +6,47 @@ class Config:
     DEBUG = os.environ.get("FLASK_DEBUG", "0") == "1"
 
     # Database 
-    POSTGRES_USER = os.environ.get("POSTGRES_USER", "shortener")
-    POSTGRES_PASSWORD = os.environ.get("POSTGRES_PASSWORD", "shortener")
-    POSTGRES_HOST = os.environ.get("POSTGRES_HOST", "db")
-    POSTGRES_PORT = os.environ.get("POSTGRES_PORT", "5432")
-    POSTGRES_DB = os.environ.get("POSTGRES_DB", "shortener_db")
+    # POSTGRES_USER = os.environ.get("POSTGRES_USER", "shortener")
+    # POSTGRES_PASSWORD = os.environ.get("POSTGRES_PASSWORD", "shortener")
+    # POSTGRES_HOST = os.environ.get("POSTGRES_HOST", "db")
+    # POSTGRES_PORT = os.environ.get("POSTGRES_PORT", "5432")
+    # POSTGRES_DB = os.environ.get("POSTGRES_DB", "shortener_db")
 
-    SQLALCHEMY_DATABASE_URI = (
-        f"postgresql+psycopg2://{POSTGRES_USER}:{POSTGRES_PASSWORD}"
-        f"@{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}"
-    )
+    # SQLALCHEMY_DATABASE_URI = (
+    #     f"postgresql+psycopg2://{POSTGRES_USER}:{POSTGRES_PASSWORD}"
+    #     f"@{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}"
+    # )
+    # SQLALCHEMY_TRACK_MODIFICATIONS = False
+
+    # Database
+    DATABASE_URL = os.environ.get("DATABASE_URL")
+
+    if DATABASE_URL:
+        # Railway / production
+        DATABASE_URL = DATABASE_URL.replace(
+            "postgres://",
+            "postgresql+psycopg2://",
+            1
+        ).replace(
+            "postgresql://",
+            "postgresql+psycopg2://",
+            1
+        )
+
+        SQLALCHEMY_DATABASE_URI = DATABASE_URL
+    else:
+        # Local development / Docker
+        POSTGRES_USER = os.environ.get("POSTGRES_USER", "shortener")
+        POSTGRES_PASSWORD = os.environ.get("POSTGRES_PASSWORD", "shortener")
+        POSTGRES_HOST = os.environ.get("POSTGRES_HOST", "db")
+        POSTGRES_PORT = os.environ.get("POSTGRES_PORT", "5432")
+        POSTGRES_DB = os.environ.get("POSTGRES_DB", "shortener_db")
+
+        SQLALCHEMY_DATABASE_URI = (
+            f"postgresql+psycopg2://{POSTGRES_USER}:{POSTGRES_PASSWORD}"
+            f"@{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}"
+        )
+
     SQLALCHEMY_TRACK_MODIFICATIONS = False
 
     # Rate Limiter
