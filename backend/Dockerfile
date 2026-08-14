@@ -7,6 +7,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
+ENV FLASK_APP=wsgi.py
+
 EXPOSE 5000
 
-CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "2", "--worker-class", "gthread", "--threads", "4", "wsgi:app"]
+CMD flask db upgrade && gunicorn --bind 0.0.0.0:${PORT:-5000} --workers 4 --worker-class gthread --threads 2 --access-logfile - --error-logfile - wsgi:app
