@@ -243,6 +243,7 @@
   align-items: center;
   gap: 0.35rem;
   padding: 0.38rem 0.8rem;
+  font-family: inherit;
   font-size: 0.78rem;
   font-weight: 600;
   color: #94a3b8;
@@ -292,6 +293,36 @@
   flex-shrink: 0;
 }
 
+.analyticsQrBtn {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-shrink: 0;
+}
+
+.analyticsQrDownload {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.38rem 0.8rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #94a3b8;
+  background: #1e293b;
+  border: 1px solid #334155;
+  border-radius: 8px;
+  cursor: pointer;
+  text-decoration: none;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+  white-space: nowrap;
+}
+
+.analyticsQrDownload:hover {
+  background: #273548;
+  border-color: #6366f1;
+  color: #a5b4fc;
+}
+
 .stat {
   display: flex;
   flex-direction: column;
@@ -314,6 +345,34 @@
   color: #64748b;
   text-transform: uppercase;
   letter-spacing: 0.04em;
+}
+
+/* Stat skeleton */
+.statSkeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  background: #1e293b;
+  border-radius: 8px;
+  padding: 0.5rem 0.85rem;
+  min-width: 72px;
+}
+
+.statSkeletonValue {
+  height: 1.3rem;
+  background: linear-gradient(90deg, #1e293b 25%, #273548 50%, #1e293b 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s infinite;
+  border-radius: 4px;
+}
+
+.statSkeletonLabel {
+  height: 0.65rem;
+  background: linear-gradient(90deg, #1e293b 25%, #273548 50%, #1e293b 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s infinite;
+  border-radius: 3px;
+  margin-top: 0.1rem;
 }
 
 /* Chart wrapper — fixed height so Chart.js knows its canvas dimensions */
@@ -478,6 +537,64 @@
   color: #64748b;
   text-align: right;
   min-width: 2.5ch;
+}
+
+/* Breakdown skeleton loaders */
+.breakdownRowIconSkeleton {
+  width: 14px;
+  height: 14px;
+  background: linear-gradient(90deg, #1e293b 25%, #273548 50%, #1e293b 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s infinite;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+.breakdownRowTextSkeleton {
+  height: 0.6rem;
+  flex: 1;
+  background: linear-gradient(90deg, #1e293b 25%, #273548 50%, #1e293b 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s infinite;
+  border-radius: 3px;
+  min-width: 40px;
+}
+
+.breakdownRowBarFillSkeleton {
+  height: 100%;
+  width: 65%;
+  background: linear-gradient(90deg, #1e293b 25%, #273548 50%, #1e293b 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s infinite;
+  border-radius: 999px;
+}
+
+.breakdownRowCountSkeleton {
+  width: 2.5ch;
+  height: 0.6rem;
+  background: linear-gradient(90deg, #1e293b 25%, #273548 50%, #1e293b 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s infinite;
+  border-radius: 3px;
+}
+
+.breakdownCardIconSkeleton {
+  width: 16px;
+  height: 16px;
+  background: linear-gradient(90deg, #1e293b 25%, #273548 50%, #1e293b 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s infinite;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+.breakdownCardTitleSkeleton {
+  height: 0.85rem;
+  width: 120px;
+  background: linear-gradient(90deg, #1e293b 25%, #273548 50%, #1e293b 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s infinite;
+  border-radius: 4px;
 }
 
 .flagEmoji {

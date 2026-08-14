@@ -12,7 +12,6 @@ import {
 } from "chart.js";
 import { Line } from "react-chartjs-2";
 import { fetchAllUrls, fetchAnalytics } from "../services/api";
-import QrCodeBlock from "./QrCodeBlock";
 import styles from "./AnalyticsDashboard.module.css";
 
 ChartJS.register(
@@ -64,6 +63,66 @@ function ChartSkeleton() {
     <div className={styles.chartSkeleton} aria-busy="true" aria-label="Loading chart…">
       {[40, 65, 45, 80, 55, 90, 70].map((h, i) => (
         <div key={i} className={styles.skeletonBar} style={{ height: `${h}%` }} />
+      ))}
+    </div>
+  );
+}
+
+function StatSkeleton() {
+  return (
+    <div className={styles.statSkeleton}>
+      <div className={styles.statSkeletonValue} />
+      <div className={styles.statSkeletonLabel} />
+    </div>
+  );
+}
+
+function StatsSkeleton() {
+  return (
+    <div className={styles.statsRow}>
+      {[...Array(3)].map((_, i) => (
+        <StatSkeleton key={i} />
+      ))}
+    </div>
+  );
+}
+
+function BreakdownRowSkeleton() {
+  return (
+    <div className={styles.breakdownRow}>
+      <div className={styles.breakdownRowLabel}>
+        <div className={styles.breakdownRowIconSkeleton} />
+        <div className={styles.breakdownRowTextSkeleton} />
+      </div>
+      <div className={styles.breakdownRowBarTrack}>
+        <div className={styles.breakdownRowBarFillSkeleton} />
+      </div>
+      <div className={styles.breakdownRowCountSkeleton} />
+    </div>
+  );
+}
+
+function BreakdownCardSkeleton() {
+  return (
+    <div className={styles.breakdownCard}>
+      <div className={styles.breakdownCardHeader}>
+        <div className={styles.breakdownCardIconSkeleton} />
+        <div className={styles.breakdownCardTitleSkeleton} />
+      </div>
+      <div className={styles.breakdownRows}>
+        {[...Array(4)].map((_, i) => (
+          <BreakdownRowSkeleton key={i} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function BreakdownsGridSkeleton() {
+  return (
+    <div className={styles.breakdownsGrid}>
+      {[...Array(5)].map((_, i) => (
+        <BreakdownCardSkeleton key={i} />
       ))}
     </div>
   );
@@ -391,6 +450,7 @@ export default function AnalyticsDashboard({ refreshTrigger }) {
               </div>
 
               <div className={styles.statsAndQr}>
+                {chartLoading && !analytics && <StatsSkeleton />}
                 {analytics && (
                   <div className={styles.statsRow}>
                     <Stat
@@ -410,8 +470,15 @@ export default function AnalyticsDashboard({ refreshTrigger }) {
                   </div>
                 )}
 
-                <div className={styles.analyticsQr}>
-                  <QrCodeBlock qrCodeUrl={selected.qr_code_url} alias={selected.alias} size={64} compact />
+                <div className={styles.analyticsQrBtn}>
+                  <a 
+                    href={`${selected.qr_code_url}${selected.qr_code_url.includes("?") ? "&" : "?"}download=1`}
+                    download={`snip-${selected.alias}-qr.png`}
+                    className={styles.analyticsQrDownload}
+                    title="Download QR code"
+                  >
+                    <DownloadIcon aria-hidden="true" /> QR Code
+                  </a>
                 </div>
               </div>
 
@@ -443,6 +510,7 @@ export default function AnalyticsDashboard({ refreshTrigger }) {
         </div>
       </div>
 
+      {selected && !analytics && chartLoading && <BreakdownsGridSkeleton />}
       {selected && analytics && (
         <div className={styles.breakdownsGrid}>
           <BreakdownCard title="Devices" icon={<MonitorIcon />} rows={deviceRows} />
@@ -621,6 +689,16 @@ function LinkIcon() {
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
       <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
+    </svg>
+  );
+}
+
+function DownloadIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+      <polyline points="7 10 12 15 17 10" />
+      <line x1="12" y1="15" x2="12" y2="3" />
     </svg>
   );
 }
